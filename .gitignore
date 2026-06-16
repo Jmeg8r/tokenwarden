@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# Virtualenvs
+.venv/
+venv/
+
+# Local runtime data — the SQLite spend log
+*.db
+*.db-wal
+*.db-shm
+
+# Live config holds budgets/paths; ship config.example.toml instead
+config.toml
+
+# OS
+.DS_Store
