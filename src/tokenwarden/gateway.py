@@ -18,8 +18,10 @@ from starlette.requests import Request
 from starlette.responses import Response, StreamingResponse
 from starlette.routing import Route
 
+from tokenwarden.alerts import AlertManager
 from tokenwarden.config import Config
 from tokenwarden.models import Usage
+from tokenwarden.notifiers import build_notifier
 from tokenwarden.pricing import cost_usd
 from tokenwarden.storage import Storage
 from tokenwarden.usage import SSEUsageAccumulator, parse_json_usage
@@ -102,10 +104,17 @@ class _Meter:
             return None
 
 
-def _record(
-    storage: Storage, config: Config, agent_id: str, request_id: str | None, meter: _Meter
+async def _meter_and_alert(
+    storage: Storage,
+    config: Config,
+    alerts: AlertManager,
+    agent_id: str,
+    request_id: str | None,
+    meter: _Meter,
 ) -> None:
-    """Persist one event. Fully guarded — never raises (fail-open)."""
+    """Persist one event and evaluate budgets. Fully guarded — never raises
+    (fail-open): metering or alerting failures must not affect the proxied
+    request, whose body has already been delivered by the time this runs."""
     try:
         usage = meter.result()
         if usage is None or usage.is_empty:
@@ -124,14 +133,16 @@ def _record(
                 usage.output_tokens,
                 cost,
             )
-    except Exception:  # noqa: BLE001 — never let metering break the request
-        log.exception("failed to record usage event (request continued normally)")
+            await alerts.evaluate(agent_id)
+    except Exception:  # noqa: BLE001 — never let metering/alerting break the request
+        log.exception("metering/alerting failed (request continued normally)")
 
 
 async def _proxy(request: Request) -> Response:
     config: Config = request.app.state.config
     storage: Storage = request.app.state.storage
     client: httpx.AsyncClient = request.app.state.upstream
+    alerts: AlertManager = request.app.state.alerts
 
     agent_id = request.headers.get(config.agent_header) or DEFAULT_AGENT
     body = await request.body()
@@ -172,7 +183,7 @@ async def _proxy(request: Request) -> Response:
             try:
                 await upstream_resp.aclose()
             finally:
-                _record(storage, config, agent_id, request_id, meter)
+                await _meter_and_alert(storage, config, alerts, agent_id, request_id, meter)
 
     return StreamingResponse(
         stream(), status_code=upstream_resp.status_code, headers=resp_headers
@@ -184,11 +195,15 @@ _METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
 
 
 def create_app(
-    config: Config, storage: Storage, upstream_client: httpx.AsyncClient | None = None
+    config: Config,
+    storage: Storage,
+    upstream_client: httpx.AsyncClient | None = None,
+    alert_manager: AlertManager | None = None,
 ) -> Starlette:
     client = upstream_client or httpx.AsyncClient(
         base_url=config.upstream_url, timeout=httpx.Timeout(UPSTREAM_TIMEOUT_SECONDS)
     )
+    alerts = alert_manager or AlertManager(config, storage, build_notifier(config))
     @asynccontextmanager
     async def lifespan(_app: Starlette):
         # Close the upstream client when the server stops.
@@ -203,4 +218,5 @@ def create_app(
     app.state.config = config
     app.state.storage = storage
     app.state.upstream = client
+    app.state.alerts = alerts
     return app

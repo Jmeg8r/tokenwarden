@@ -157,3 +157,38 @@ def test_unattributed_when_no_header(tmp_path):
         assert storage.spend_today(config.tzinfo, agent_id="unattributed") > 0
     finally:
         storage.close()
+
+
+class _RecordingNotifier:
+    def __init__(self) -> None:
+        self.alerts: list = []
+
+    async def notify(self, alert) -> None:
+        self.alerts.append(alert)
+
+
+def test_request_over_budget_triggers_alert(tmp_path):
+    from tokenwarden.alerts import AlertManager
+    from tokenwarden.config import Budgets
+
+    recording = _RecordingNotifier()
+    # JSON_BODY costs ~$0.001125 on Opus 4.8; a tiny budget guarantees a crossing.
+    config = Config(
+        db_path=str(tmp_path / "g.db"),
+        upstream_url="http://upstream.test",
+        budgets=Budgets(default_agent_daily=0.0005),
+    )
+    storage = Storage(config.db_path)
+    upstream = httpx.AsyncClient(
+        base_url="http://upstream.test", transport=httpx.ASGITransport(app=_json_upstream(JSON_BODY))
+    )
+    alerts = AlertManager(config, storage, recording)
+    app = create_app(config, storage, upstream_client=upstream, alert_manager=alerts)
+    try:
+        with TestClient(app) as client:
+            r = client.post("/v1/messages", headers={"x-watchdog-agent": "forge"})
+        assert r.status_code == 200
+        assert recording.alerts, "expected a budget alert to fire"
+        assert recording.alerts[0].level == "critical"
+    finally:
+        storage.close()

@@ -15,6 +15,13 @@ debug_log_bodies = false          # true => log request/response bodies (privacy
 warn_pct = 80
 critical_pct = 100
 
+[notifier]
+# Channels to alert on. Secrets come from env vars, NEVER this file:
+#   discord  -> TOKENWARDEN_DISCORD_WEBHOOK_URL
+#   telegram -> TOKENWARDEN_TELEGRAM_BOT_TOKEN, TOKENWARDEN_TELEGRAM_CHAT_ID
+# Leave empty ([]) to log-only without sending anywhere.
+channels = ["discord"]
+
 # Estimated dollars are computed from this table (USD per 1M tokens).
 # Defaults ship in code for current models; override here whenever Anthropic
 # changes pricing. cache_read / cache_write default to 0.1x / 1.25x of input.

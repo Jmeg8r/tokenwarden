@@ -29,3 +29,16 @@ class Usage:
             and self.cache_creation_tokens == 0
             and self.cache_read_tokens == 0
         )
+
+
+@dataclass(slots=True)
+class Alert:
+    """A budget-threshold crossing, ready to be rendered into a notification."""
+
+    scope: str  # "global" or "agent:<id>"
+    level: str  # "warn" | "critical"
+    spent: float
+    budget: float
+    pct: float
+    day: str  # local YYYY-MM-DD
+    period: str = "daily"

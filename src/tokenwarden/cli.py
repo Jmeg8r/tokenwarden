@@ -35,6 +35,11 @@ def _serve(args: argparse.Namespace) -> int:
         config.enforce,
         config.db_path,
     )
+    if config.enforce:
+        log.warning(
+            "enforce=true is set, but request blocking is not implemented yet "
+            "(alerts only) — over-budget requests are NOT blocked"
+        )
     uvicorn.run(app, host=config.host, port=config.port, log_level="info")
     return 0
 

@@ -84,6 +84,7 @@ class Config:
     critical_pct: float = DEFAULT_CRITICAL_PCT
     enforce: bool = False
     debug_log_bodies: bool = False
+    notifier_channels: list[str] = field(default_factory=list)
 
     @property
     def tzinfo(self) -> ZoneInfo:
@@ -96,6 +97,9 @@ class Config:
             raise ValueError(f"port out of range: {self.port}")
         if not 0 < self.warn_pct <= self.critical_pct:
             raise ValueError("require 0 < warn_pct <= critical_pct")
+        bad_channels = set(self.notifier_channels) - {"discord", "telegram"}
+        if bad_channels:
+            raise ValueError(f"unknown notifier channels: {sorted(bad_channels)}")
         try:
             ZoneInfo(self.timezone)
         except ZoneInfoNotFoundError as exc:
@@ -121,6 +125,8 @@ class Config:
         th = data.get("thresholds", {})
         cfg.warn_pct = float(th.get("warn_pct", cfg.warn_pct))
         cfg.critical_pct = float(th.get("critical_pct", cfg.critical_pct))
+
+        cfg.notifier_channels = list(data.get("notifier", {}).get("channels", []))
 
         for model, row in data.get("prices", {}).items():
             inp = float(row["input"])

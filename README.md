@@ -1,8 +1,8 @@
 # tokenwarden
 
 A lightweight local gateway that meters **Claude API spend per agent**, logs
-every billing event to SQLite, and (next milestone) alerts when daily spend
-approaches a budget you set.
+every billing event to SQLite, and alerts when daily spend approaches a budget
+you set.
 
 Point your agents at it with one environment variable. No SDK changes, no admin
 key, works with any language.
@@ -52,7 +52,7 @@ tokenwarden status                       # today's estimated spend by agent
 - **M1 — gateway** ✅ passthrough (JSON + streaming SSE), fail-open, usage
   extraction → SQLite, cost estimation, `serve` / `status` CLI.
 - **M2** cost-engine polish + richer `status`/`report`.
-- **M3** budgets + threshold alerts (Discord / Telegram).
+- **M3 — alerts** ✅ daily budget evaluation, warn/critical with per-day hysteresis, Discord + Telegram notifiers.
 - **M4** packaging (LaunchAgent), docs, MVP ship.
 - **Phase 2** Admin Cost/Usage API reconciliation + drift detection.
 
