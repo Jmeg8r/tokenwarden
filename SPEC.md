@@ -1,16 +1,14 @@
-# Spec — Claude API Spend Watchdog (working title)
+# Spec — tokenwarden (Claude API Spend Watchdog)
 
 > A lightweight, language-agnostic gateway that meters Claude API credit
 > consumption **per agent**, alerts when daily spend approaches a budget, and
 > logs every billing event to SQLite. Built standalone/open-source; ClaudeClaw
 > is the first consumer.
 
-**Status:** design locked, pre-implementation
+**Status:** M0/M1 implemented on branch `feat/m0-m1-gateway`; M2+ pending
 **Last updated:** 2026-06-16
-**Naming:** repo/dir is `claudeclaw-billing-watchdog` as a working name. The OSS
-package name should be generic (ClaudeClaw is James's internal platform, not the
-product). Candidates: `claude-spend-watchdog`, `tokenwarden`, `claude-budget-guard`.
-Decide before first publish.
+**Name:** `tokenwarden` (decided 2026-06-16). Repo at `~/Projects/tokenwarden`.
+ClaudeClaw is James's internal platform and the first consumer, not the product.
 
 ---
 
