@@ -73,13 +73,16 @@ def main(argv: list[str] | None = None) -> int:
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
     parser = argparse.ArgumentParser(prog="tokenwarden", description="Claude API spend watchdog.")
-    parser.add_argument(
+    # --config is shared by every subcommand and accepted *after* it
+    # (e.g. `tokenwarden serve --config foo.toml`), which is what users type.
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument(
         "--config", default="config.toml", help="path to config TOML (default: config.toml)"
     )
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("serve", help="run the metering gateway")
-    sub.add_parser("status", help="show today's estimated spend by agent")
-    sub.add_parser("report", help="aggregate report (not yet implemented)")
+    sub.add_parser("serve", parents=[common], help="run the metering gateway")
+    sub.add_parser("status", parents=[common], help="show today's estimated spend by agent")
+    sub.add_parser("report", parents=[common], help="aggregate report (not yet implemented)")
     args = parser.parse_args(argv)
 
     handlers = {"serve": _serve, "status": _status, "report": _report}
