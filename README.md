@@ -1,8 +1,8 @@
 # tokenwarden
 
 A lightweight local gateway that meters **Claude API spend per agent**, logs
-every billing event to SQLite, and (next milestone) alerts when daily spend
-approaches a budget you set.
+every billing event to SQLite, and alerts when daily spend approaches a budget
+you set.
 
 Point your agents at it with one environment variable. No SDK changes, no admin
 key, works with any language.
@@ -16,7 +16,7 @@ key, works with any language.
 ## How it works
 
 ```
-agent ──(ANTHROPIC_BASE_URL=http://127.0.0.1:8787)──▶ tokenwarden ──▶ api.anthropic.com
+agent ──(ANTHROPIC_BASE_URL=http://127.0.0.1:8788)──▶ tokenwarden ──▶ api.anthropic.com
                                                           │
                                                   reads usage, writes
                                                   SQLite, (soon) alerts
@@ -37,14 +37,44 @@ agent ──(ANTHROPIC_BASE_URL=http://127.0.0.1:8787)──▶ tokenwarden ─�
 ```bash
 pip install -e ".[dev]"
 cp config.example.toml config.toml      # edit budgets/timezone as needed
-tokenwarden serve                        # starts the gateway on 127.0.0.1:8787
+tokenwarden serve                        # starts the gateway on 127.0.0.1:8788
 
 # point an agent at it
-export ANTHROPIC_BASE_URL=http://127.0.0.1:8787
+export ANTHROPIC_BASE_URL=http://127.0.0.1:8788
 # and have it send a header identifying itself, e.g. X-Watchdog-Agent: forge
 
 tokenwarden status                       # today's estimated spend by agent
+
+# or dogfood the whole Part-A path (boot -> one cheap call -> status -> teardown):
+ANTHROPIC_API_KEY=sk-ant-api03-... scripts/smoke.sh
 ```
+
+## Run as a service (macOS)
+
+Reproducible install, then run under launchd:
+
+```bash
+pip install -r requirements.txt && pip install -e .     # pinned, tested versions
+```
+
+A LaunchAgent template lives in [`packaging/`](packaging/com.tokenwarden.gateway.plist) — replace `REPO` with the absolute repo path and load it:
+
+```bash
+sed "s#REPO#$PWD#g" packaging/com.tokenwarden.gateway.plist > ~/Library/LaunchAgents/com.tokenwarden.gateway.plist
+launchctl load ~/Library/LaunchAgents/com.tokenwarden.gateway.plist
+```
+
+## Enforcement (optional)
+
+By default tokenwarden only observes and alerts. Set `enforce = true` in `[gateway]`
+to also **refuse** requests with HTTP 429 once an agent (or the global pool) is at or
+over its daily budget — *before* the call reaches Anthropic, so the over-budget spend
+never happens. The request that crosses the line still goes through (its cost isn't
+known until the response); the next one is blocked.
+
+> It returns **429** with no `Retry-After` (Anthropic SDKs back off briefly, then
+> surface the error). If you'd rather agents fail fast without retrying, **403** is a
+> one-line change.
 
 ## Status
 
@@ -52,8 +82,8 @@ tokenwarden status                       # today's estimated spend by agent
 - **M1 — gateway** ✅ passthrough (JSON + streaming SSE), fail-open, usage
   extraction → SQLite, cost estimation, `serve` / `status` CLI.
 - **M2** cost-engine polish + richer `status`/`report`.
-- **M3** budgets + threshold alerts (Discord / Telegram).
-- **M4** packaging (LaunchAgent), docs, MVP ship.
+- **M3 — alerts** ✅ daily budget evaluation, warn/critical with per-day hysteresis, Discord + Telegram notifiers.
+- **M4 — packaging** ✅ pinned deps + `requirements.txt`, LaunchAgent template, GitHub Actions CI, Makefile.
 - **Phase 2** Admin Cost/Usage API reconciliation + drift detection.
 
 ## What it can't see (yet)

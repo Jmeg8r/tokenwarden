@@ -1,16 +1,14 @@
-# Spec — Claude API Spend Watchdog (working title)
+# Spec — tokenwarden (Claude API Spend Watchdog)
 
 > A lightweight, language-agnostic gateway that meters Claude API credit
 > consumption **per agent**, alerts when daily spend approaches a budget, and
 > logs every billing event to SQLite. Built standalone/open-source; ClaudeClaw
 > is the first consumer.
 
-**Status:** design locked, pre-implementation
+**Status:** M0, M1, M3, M4, and opt-in 429 enforcement implemented on branch `feat/m0-m1-gateway` (PR #1); M2 polish + phase-2 Admin-API reconciliation pending
 **Last updated:** 2026-06-16
-**Naming:** repo/dir is `claudeclaw-billing-watchdog` as a working name. The OSS
-package name should be generic (ClaudeClaw is James's internal platform, not the
-product). Candidates: `claude-spend-watchdog`, `tokenwarden`, `claude-budget-guard`.
-Decide before first publish.
+**Name:** `tokenwarden` (decided 2026-06-16). Repo at `~/Projects/tokenwarden`.
+ClaudeClaw is James's internal platform and the first consumer, not the product.
 
 ---
 
@@ -64,7 +62,7 @@ ClaudeClaw first, but useful to anyone on the Agent SDK / Messages API.
 
 ```
    agent (any language/SDK)
-        │  ANTHROPIC_BASE_URL=http://localhost:8787
+        │  ANTHROPIC_BASE_URL=http://localhost:8788
         │  header: X-Watchdog-Agent: forge
         ▼
  ┌─────────────────────────────┐        ┌──────────────────────┐

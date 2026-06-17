@@ -1,0 +1,46 @@
+# tokenwarden configuration — copy to config.toml and edit.
+# Secrets (notifier tokens) come from environment variables, NEVER this file.
+
+[gateway]
+upstream_url = "https://api.anthropic.com"
+host = "127.0.0.1"
+port = 8788
+timezone = "America/New_York"     # daily budgets reset at local midnight here
+db_path = "tokenwarden.db"
+agent_header = "x-watchdog-agent" # agents set this header to identify themselves
+enforce = false                   # true => 429 on over-budget requests (default: observe-only)
+debug_log_bodies = false          # true => log request/response bodies (privacy: keep off)
+
+[thresholds]
+warn_pct = 80
+critical_pct = 100
+
+[notifier]
+# Channels to alert on. Secrets come from env vars, NEVER this file:
+#   discord  -> TOKENWARDEN_DISCORD_WEBHOOK_URL
+#   telegram -> TOKENWARDEN_TELEGRAM_BOT_TOKEN, TOKENWARDEN_TELEGRAM_CHAT_ID
+# Leave empty ([]) to log-only without sending anywhere.
+channels = ["discord"]
+
+# Estimated dollars are computed from this table (USD per 1M tokens).
+# Defaults ship in code for current models; override here whenever Anthropic
+# changes pricing. cache_read / cache_write default to 0.1x / 1.25x of input.
+[prices.claude-opus-4-8]
+input = 5.0
+output = 25.0
+
+[prices.claude-sonnet-4-6]
+input = 3.0
+output = 15.0
+
+[prices.claude-haiku-4-5]
+input = 1.0
+output = 5.0
+
+[budgets]
+global_daily = 50.0
+default_agent_daily = 10.0        # applied to any agent without a specific budget
+
+[budgets.per_agent_daily]
+# forge = 20.0
+# scout = 5.0
