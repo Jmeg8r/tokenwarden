@@ -8,6 +8,7 @@ Design invariants:
 
 from __future__ import annotations
 
+import json
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -20,7 +21,7 @@ from starlette.routing import Route
 
 from tokenwarden.alerts import AlertManager
 from tokenwarden.config import Config
-from tokenwarden.models import Usage
+from tokenwarden.models import Alert, Usage
 from tokenwarden.notifiers import build_notifier
 from tokenwarden.pricing import cost_usd
 from tokenwarden.storage import Storage
@@ -138,6 +139,20 @@ async def _meter_and_alert(
         log.exception("metering/alerting failed (request continued normally)")
 
 
+def _budget_exceeded_response(blocked: Alert) -> Response:
+    """429 returned by tokenwarden itself (not Anthropic) when enforcement is on
+    and the budget is already spent. Intentionally no Retry-After: the reset is
+    hours away and Anthropic SDKs would sleep for the whole Retry-After value."""
+    msg = (
+        f"tokenwarden: daily budget exceeded for {blocked.scope} "
+        f"(${blocked.spent:,.4f} of ${blocked.budget:,.2f}); resets at local midnight"
+    )
+    body = json.dumps(
+        {"type": "error", "error": {"type": "tokenwarden_budget_exceeded", "message": msg}}
+    ).encode()
+    return Response(body, status_code=429, media_type="application/json")
+
+
 async def _proxy(request: Request) -> Response:
     config: Config = request.app.state.config
     storage: Storage = request.app.state.storage
@@ -145,6 +160,19 @@ async def _proxy(request: Request) -> Response:
     alerts: AlertManager = request.app.state.alerts
 
     agent_id = request.headers.get(config.agent_header) or DEFAULT_AGENT
+
+    # Enforcement (opt-in): refuse before contacting Anthropic if already over budget.
+    if config.enforce:
+        blocked = alerts.should_block(agent_id)
+        if blocked is not None:
+            log.warning(
+                "blocking over-budget request: %s ($%.4f of $%.2f)",
+                blocked.scope,
+                blocked.spent,
+                blocked.budget,
+            )
+            return _budget_exceeded_response(blocked)
+
     body = await request.body()
     fwd_headers = [
         (k, v)

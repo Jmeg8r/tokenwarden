@@ -64,6 +64,18 @@ sed "s#REPO#$PWD#g" packaging/com.tokenwarden.gateway.plist > ~/Library/LaunchAg
 launchctl load ~/Library/LaunchAgents/com.tokenwarden.gateway.plist
 ```
 
+## Enforcement (optional)
+
+By default tokenwarden only observes and alerts. Set `enforce = true` in `[gateway]`
+to also **refuse** requests with HTTP 429 once an agent (or the global pool) is at or
+over its daily budget — *before* the call reaches Anthropic, so the over-budget spend
+never happens. The request that crosses the line still goes through (its cost isn't
+known until the response); the next one is blocked.
+
+> It returns **429** with no `Retry-After` (Anthropic SDKs back off briefly, then
+> surface the error). If you'd rather agents fail fast without retrying, **403** is a
+> one-line change.
+
 ## Status
 
 - **M0 — config** ✅ TOML schema, validation, configurable price table.

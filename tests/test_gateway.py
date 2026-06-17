@@ -194,3 +194,77 @@ def test_request_over_budget_triggers_alert(tmp_path):
         assert recording.alerts[0].level == "critical"
     finally:
         storage.close()
+
+
+def test_enforce_blocks_over_budget_without_contacting_upstream(tmp_path):
+    from datetime import datetime, timezone
+
+    from tokenwarden.alerts import AlertManager
+    from tokenwarden.config import Budgets
+    from tokenwarden.models import Usage
+
+    upstream_calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        upstream_calls["n"] += 1
+        return httpx.Response(200, content=JSON_BODY, headers={"content-type": "application/json"})
+
+    config = Config(
+        db_path=str(tmp_path / "g.db"),
+        upstream_url="http://upstream.test",
+        enforce=True,
+        budgets=Budgets(default_agent_daily=1.0),
+    )
+    storage = Storage(config.db_path)
+    # Pre-seed: agent already over its $1 budget today.
+    storage.record_event(
+        ts=datetime.now(timezone.utc).isoformat(),
+        agent_id="forge",
+        usage=Usage(model="claude-opus-4-8"),
+        cost_usd=2.0,
+        request_id="seed",
+    )
+    upstream = httpx.AsyncClient(base_url="http://upstream.test", transport=httpx.MockTransport(handler))
+    alerts = AlertManager(config, storage, _RecordingNotifier())
+    app = create_app(config, storage, upstream_client=upstream, alert_manager=alerts)
+    try:
+        with TestClient(app) as client:
+            r = client.post("/v1/messages", headers={"x-watchdog-agent": "forge"})
+        assert r.status_code == 429
+        assert upstream_calls["n"] == 0  # refused before contacting Anthropic
+        assert "budget" in r.text.lower()
+    finally:
+        storage.close()
+
+
+def test_no_enforce_lets_over_budget_through(tmp_path):
+    from datetime import datetime, timezone
+
+    from tokenwarden.config import Budgets
+    from tokenwarden.models import Usage
+
+    config = Config(
+        db_path=str(tmp_path / "g.db"),
+        upstream_url="http://upstream.test",
+        enforce=False,
+        budgets=Budgets(default_agent_daily=1.0),
+    )
+    storage = Storage(config.db_path)
+    storage.record_event(
+        ts=datetime.now(timezone.utc).isoformat(),
+        agent_id="forge",
+        usage=Usage(model="claude-opus-4-8"),
+        cost_usd=2.0,
+        request_id="seed",
+    )
+    upstream = httpx.AsyncClient(
+        base_url="http://upstream.test", transport=httpx.ASGITransport(app=_json_upstream(JSON_BODY))
+    )
+    app = create_app(config, storage, upstream_client=upstream)
+    try:
+        with TestClient(app) as client:
+            r = client.post("/v1/messages", headers={"x-watchdog-agent": "forge"})
+        assert r.status_code == 200  # observe-only: not blocked
+        assert r.content == JSON_BODY
+    finally:
+        storage.close()

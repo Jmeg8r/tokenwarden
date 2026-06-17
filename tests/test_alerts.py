@@ -82,3 +82,32 @@ def test_no_budget_no_alert():
     storage.totals["forge"] = 9999.0
     asyncio.run(mgr.evaluate("forge", day="2026-06-16"))
     assert notifier.alerts == []
+
+
+def test_should_block_when_over_critical():
+    storage = _FakeStorage()
+    mgr, _ = _manager(storage, default_agent_daily=10.0)
+    storage.totals["forge"] = 10.0  # 100%
+    assert mgr.should_block("forge") is not None
+
+
+def test_should_not_block_under_critical():
+    storage = _FakeStorage()
+    mgr, _ = _manager(storage, default_agent_daily=10.0)
+    storage.totals["forge"] = 9.0  # warn band, not over
+    assert mgr.should_block("forge") is None
+
+
+def test_should_not_block_without_budget():
+    storage = _FakeStorage()
+    mgr, _ = _manager(storage)  # no budgets
+    storage.totals["forge"] = 9999.0
+    assert mgr.should_block("forge") is None
+
+
+def test_should_block_on_global_pool():
+    storage = _FakeStorage()
+    mgr, _ = _manager(storage, global_daily=100.0)
+    storage.totals[None] = 150.0
+    blocked = mgr.should_block("whoever")
+    assert blocked is not None and blocked.scope == "global"

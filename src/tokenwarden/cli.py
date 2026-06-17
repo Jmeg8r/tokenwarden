@@ -36,9 +36,9 @@ def _serve(args: argparse.Namespace) -> int:
         config.db_path,
     )
     if config.enforce:
-        log.warning(
-            "enforce=true is set, but request blocking is not implemented yet "
-            "(alerts only) — over-budget requests are NOT blocked"
+        log.info(
+            "enforcement ON — requests are refused with HTTP 429 once an agent or "
+            "the global pool is at/over the critical budget threshold"
         )
     uvicorn.run(app, host=config.host, port=config.port, log_level="info")
     return 0

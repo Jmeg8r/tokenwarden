@@ -71,3 +71,36 @@ class AlertManager:
         )
         log.info("budget alert: %s at %.0f%% (%s)", scope, pct, alert.level)
         await self._notifier.notify(alert)
+
+    def should_block(self, agent_id: str) -> Alert | None:
+        """Pre-request enforcement check: is this agent OR the global pool already
+        at/over the critical threshold for today? Returns the breaching Alert (so
+        the caller can explain why), else None.
+
+        Fail-open: any error returns None (allow). Note this sees spend *before*
+        the current request — its cost isn't known until the response — so the
+        request that tips you over still goes through; the next one is blocked.
+        """
+        try:
+            budgets = self._config.budgets
+            tz = self._config.tzinfo
+            day = datetime.now(tz).strftime("%Y-%m-%d")
+            agent_budget = budgets.daily_for(agent_id)
+            if agent_budget:
+                spent = self._storage.spend_today(tz, agent_id)
+                if self._level_for(spent / agent_budget * 100.0) == _CRITICAL:
+                    return Alert(
+                        scope=f"agent:{agent_id}", level="critical", spent=spent,
+                        budget=agent_budget, pct=spent / agent_budget * 100.0, day=day,
+                    )
+            if budgets.global_daily:
+                spent = self._storage.spend_today(tz)
+                if self._level_for(spent / budgets.global_daily * 100.0) == _CRITICAL:
+                    return Alert(
+                        scope="global", level="critical", spent=spent,
+                        budget=budgets.global_daily, pct=spent / budgets.global_daily * 100.0, day=day,
+                    )
+            return None
+        except Exception:  # noqa: BLE001 — enforcement must never hard-fail traffic
+            log.exception("budget pre-check failed; allowing request (fail-open)")
+            return None

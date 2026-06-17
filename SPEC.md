@@ -5,7 +5,7 @@
 > logs every billing event to SQLite. Built standalone/open-source; ClaudeClaw
 > is the first consumer.
 
-**Status:** M0/M1 implemented on branch `feat/m0-m1-gateway`; M2+ pending
+**Status:** M0, M1, M3, M4, and opt-in 429 enforcement implemented on branch `feat/m0-m1-gateway` (PR #1); M2 polish + phase-2 Admin-API reconciliation pending
 **Last updated:** 2026-06-16
 **Name:** `tokenwarden` (decided 2026-06-16). Repo at `~/Projects/tokenwarden`.
 ClaudeClaw is James's internal platform and the first consumer, not the product.
