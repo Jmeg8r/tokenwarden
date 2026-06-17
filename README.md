@@ -49,6 +49,21 @@ tokenwarden status                       # today's estimated spend by agent
 ANTHROPIC_API_KEY=sk-ant-api03-... scripts/smoke.sh
 ```
 
+## Run as a service (macOS)
+
+Reproducible install, then run under launchd:
+
+```bash
+pip install -r requirements.txt && pip install -e .     # pinned, tested versions
+```
+
+A LaunchAgent template lives in [`packaging/`](packaging/com.tokenwarden.gateway.plist) — replace `REPO` with the absolute repo path and load it:
+
+```bash
+sed "s#REPO#$PWD#g" packaging/com.tokenwarden.gateway.plist > ~/Library/LaunchAgents/com.tokenwarden.gateway.plist
+launchctl load ~/Library/LaunchAgents/com.tokenwarden.gateway.plist
+```
+
 ## Status
 
 - **M0 — config** ✅ TOML schema, validation, configurable price table.
@@ -56,7 +71,7 @@ ANTHROPIC_API_KEY=sk-ant-api03-... scripts/smoke.sh
   extraction → SQLite, cost estimation, `serve` / `status` CLI.
 - **M2** cost-engine polish + richer `status`/`report`.
 - **M3 — alerts** ✅ daily budget evaluation, warn/critical with per-day hysteresis, Discord + Telegram notifiers.
-- **M4** packaging (LaunchAgent), docs, MVP ship.
+- **M4 — packaging** ✅ pinned deps + `requirements.txt`, LaunchAgent template, GitHub Actions CI, Makefile.
 - **Phase 2** Admin Cost/Usage API reconciliation + drift detection.
 
 ## What it can't see (yet)

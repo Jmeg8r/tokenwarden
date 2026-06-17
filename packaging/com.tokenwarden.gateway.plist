@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LaunchAgent template for running the tokenwarden gateway on macOS.
+  Replace REPO with this repo's absolute path, then install:
+
+    sed "s#REPO#$PWD#g" packaging/com.tokenwarden.gateway.plist \
+      > ~/Library/LaunchAgents/com.tokenwarden.gateway.plist
+    launchctl load ~/Library/LaunchAgents/com.tokenwarden.gateway.plist
+
+  Notifier secrets (TOKENWARDEN_DISCORD_WEBHOOK_URL, etc.) must be provided via
+  the EnvironmentVariables block below or a wrapper — launchd does not read your
+  shell profile.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.tokenwarden.gateway</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>REPO/.venv/bin/tokenwarden</string>
+    <string>serve</string>
+    <string>--config</string>
+    <string>REPO/config.toml</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>REPO</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- <key>TOKENWARDEN_DISCORD_WEBHOOK_URL</key><string>https://discord.com/api/webhooks/...</string> -->
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>REPO/tokenwarden.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>REPO/tokenwarden.err.log</string>
+</dict>
+</plist>
