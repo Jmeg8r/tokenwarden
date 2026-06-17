@@ -16,7 +16,7 @@ key, works with any language.
 ## How it works
 
 ```
-agent ──(ANTHROPIC_BASE_URL=http://127.0.0.1:8787)──▶ tokenwarden ──▶ api.anthropic.com
+agent ──(ANTHROPIC_BASE_URL=http://127.0.0.1:8788)──▶ tokenwarden ──▶ api.anthropic.com
                                                           │
                                                   reads usage, writes
                                                   SQLite, (soon) alerts
@@ -37,10 +37,10 @@ agent ──(ANTHROPIC_BASE_URL=http://127.0.0.1:8787)──▶ tokenwarden ─�
 ```bash
 pip install -e ".[dev]"
 cp config.example.toml config.toml      # edit budgets/timezone as needed
-tokenwarden serve                        # starts the gateway on 127.0.0.1:8787
+tokenwarden serve                        # starts the gateway on 127.0.0.1:8788
 
 # point an agent at it
-export ANTHROPIC_BASE_URL=http://127.0.0.1:8787
+export ANTHROPIC_BASE_URL=http://127.0.0.1:8788
 # and have it send a header identifying itself, e.g. X-Watchdog-Agent: forge
 
 tokenwarden status                       # today's estimated spend by agent

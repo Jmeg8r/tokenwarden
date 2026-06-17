@@ -4,7 +4,7 @@
 [gateway]
 upstream_url = "https://api.anthropic.com"
 host = "127.0.0.1"
-port = 8787
+port = 8788
 timezone = "America/New_York"     # daily budgets reset at local midnight here
 db_path = "tokenwarden.db"
 agent_header = "x-watchdog-agent" # agents set this header to identify themselves

@@ -62,7 +62,7 @@ ClaudeClaw first, but useful to anyone on the Agent SDK / Messages API.
 
 ```
    agent (any language/SDK)
-        │  ANTHROPIC_BASE_URL=http://localhost:8787
+        │  ANTHROPIC_BASE_URL=http://localhost:8788
         │  header: X-Watchdog-Agent: forge
         ▼
  ┌─────────────────────────────┐        ┌──────────────────────┐

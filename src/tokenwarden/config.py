@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 # --- defaults (no magic numbers scattered through the code) ---
 DEFAULT_UPSTREAM = "https://api.anthropic.com"
 DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 8787
+DEFAULT_PORT = 8788  # 8787 is commonly taken by Headroom's proxy; avoid the clash
 DEFAULT_TZ = "America/New_York"
 DEFAULT_DB = "tokenwarden.db"
 DEFAULT_AGENT_HEADER = "x-watchdog-agent"
