@@ -44,6 +44,9 @@ export ANTHROPIC_BASE_URL=http://127.0.0.1:8788
 # and have it send a header identifying itself, e.g. X-Watchdog-Agent: forge
 
 tokenwarden status                       # today's estimated spend by agent
+
+# or dogfood the whole Part-A path (boot -> one cheap call -> status -> teardown):
+ANTHROPIC_API_KEY=sk-ant-api03-... scripts/smoke.sh
 ```
 
 ## Status
