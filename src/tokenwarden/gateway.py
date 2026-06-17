@@ -151,6 +151,12 @@ async def _proxy(request: Request) -> Response:
         for k, v in request.headers.items()
         if k.lower() not in _DROP_REQUEST_HEADERS and k.lower() != config.agent_header
     ]
+    # Force identity encoding upstream. Stripping the client's Accept-Encoding is
+    # not enough: httpx adds its own `Accept-Encoding: gzip, deflate` default, so
+    # the upstream would compress, and we forward raw body bytes verbatim without
+    # re-compressing. Setting identity explicitly overrides that default — keeping
+    # passthrough byte-faithful AND the body readable for usage metering.
+    fwd_headers.append(("accept-encoding", "identity"))
 
     raw_path = request.url.path
     if request.url.query:

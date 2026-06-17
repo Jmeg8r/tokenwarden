@@ -51,6 +51,7 @@ def _json_upstream(body: bytes, *, request_id: str | None = None, capture: dict 
             capture["path"] = request.url.path
             capture["api_key"] = request.headers.get("x-api-key")
             capture["watchdog_header_forwarded"] = "x-watchdog-agent" in request.headers
+            capture["accept_encoding"] = request.headers.get("accept-encoding")
         headers = {"request-id": request_id} if request_id else {}
         return StarletteResponse(body, status_code=200, media_type="application/json", headers=headers)
 
@@ -95,6 +96,7 @@ def test_passthrough_json_and_meters(tmp_path):
         assert captured["path"] == "/v1/messages"
         assert captured["api_key"] == "sk-ant-api03-xxx"  # auth forwarded
         assert captured["watchdog_header_forwarded"] is False  # internal header stripped
+        assert captured["accept_encoding"] == "identity"  # forced, so httpx can't gzip the upstream
 
         expected = 100 / 1e6 * 5 + 25 / 1e6 * 25
         assert round(storage.spend_today(config.tzinfo, agent_id="forge"), 6) == round(expected, 6)
