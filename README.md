@@ -15,11 +15,14 @@ key, works with any language.
 
 ## How it works
 
-```
-agent ──(ANTHROPIC_BASE_URL=http://127.0.0.1:8788)──▶ tokenwarden ──▶ api.anthropic.com
-                                                          │
-                                                  reads usage, writes
-                                                  SQLite, (soon) alerts
+```mermaid
+flowchart LR
+    Agent["agent<br/>ANTHROPIC_BASE_URL=127.0.0.1:8788<br/>X-Watchdog-Agent: name"] --> GW["tokenwarden<br/>gateway.py (fail-open proxy)"]
+    GW <--> API[api.anthropic.com]
+    GW --> Meter["usage.py + pricing.py<br/>tokens → estimated cost"]
+    Meter --> DB[("storage.py<br/>SQLite: tokenwarden.db")]
+    DB --> Alerts["alerts.py → notifiers.py<br/>daily-budget alerts"]
+    DB --> CLI["cli.py status<br/>spend by agent"]
 ```
 
 - **Transparent reverse proxy.** Forwards every request to Anthropic untouched
