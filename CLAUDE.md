@@ -35,3 +35,22 @@ make smoke       # live Part-A dogfood (needs ANTHROPIC_API_KEY)
   table there rather than hardcoding numbers elsewhere.
 - `tokenwarden.db` and `config.toml` are local state — keep real config/secrets out of git.
 - Branch/PR per the global workflow; never push to `main` directly.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs live as GitHub issues in `Jmeg8r/tokenwarden`, managed via the
+`gh` CLI. External PRs are not a triage surface (issues only). See
+`docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Canonical five-role vocabulary. `wontfix` already exists in the repo; the other
+four (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`) are
+created on first `/triage` use. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root, created lazily
+by `/domain-modeling`. See `docs/agents/domain.md`.
