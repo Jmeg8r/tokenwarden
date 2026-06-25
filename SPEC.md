@@ -2,13 +2,12 @@
 
 > A lightweight, language-agnostic gateway that meters Claude API credit
 > consumption **per agent**, alerts when daily spend approaches a budget, and
-> logs every billing event to SQLite. Built standalone/open-source; ClaudeClaw
-> is the first consumer.
+> logs every billing event to SQLite. Built standalone and open-source for any
+> fleet running Claude through API keys.
 
 **Status:** M0, M1, M3, M4, and opt-in 429 enforcement implemented on branch `feat/m0-m1-gateway` (PR #1); M2 polish + phase-2 Admin-API reconciliation pending
 **Last updated:** 2026-06-16
-**Name:** `tokenwarden` (decided 2026-06-16). Repo at `~/Projects/tokenwarden`.
-ClaudeClaw is James's internal platform and the first consumer, not the product.
+**Name:** `tokenwarden` (decided 2026-06-16).
 
 ---
 
@@ -23,7 +22,7 @@ risk is the same: **surprise charges, and tooling that breaks because it
 hardcoded billing assumptions.**
 
 This tool defends against that for any fleet running Claude through API keys —
-ClaudeClaw first, but useful to anyone on the Agent SDK / Messages API.
+useful to anyone on the Agent SDK / Messages API.
 
 ### Verified facts this design rests on (Anthropic docs, 2026-06-16)
 - Auth determines billing: `sk-ant-api03-` keys → prepaid credits at token
@@ -54,7 +53,7 @@ ClaudeClaw first, but useful to anyone on the Agent SDK / Messages API.
   not visible to a base-URL gateway — phase 2 via Admin API / session usage).
 - Monitoring subscription-token (`oat01`) agents' dollars (none exist; track
   rate-limit headroom instead — phase 2).
-- A web dashboard (phase 2; ClaudeClaw `/pmo` can read the SQLite directly).
+- A web dashboard (phase 2; until then, read the SQLite directly).
 
 ---
 
@@ -198,7 +197,7 @@ Ship `config.example.toml`; `.gitignore` the live config.
   non-streaming responses — assert byte-fidelity passthrough (status/headers/
   body), event rows written, and **fail-open** (upstream error AND injected
   metering error → request still succeeds).
-- **Dogfood:** point one real ClaudeClaw agent at the gateway.
+- **Dogfood:** point one real agent at the gateway.
 
 ---
 
