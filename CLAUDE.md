@@ -9,6 +9,11 @@ point `ANTHROPIC_BASE_URL` at it (default `http://127.0.0.1:8788`) and tag thems
 `X-Watchdog-Agent` header; tokenwarden forwards to `api.anthropic.com`, meters token usage, prices
 it, and records spend to a local SQLite DB. See `SPEC.md` for the full design.
 
+## Session state
+Read [`STATE.md`](STATE.md) at the **start** of a session — verified facts, open threads, and a
+resume pointer — and update it before you finish. This file (CLAUDE.md) holds stable conventions;
+`STATE.md` holds what changes, so sessions resume instead of restarting from zero.
+
 ## Where things are
 - `src/tokenwarden/gateway.py` — the Starlette/uvicorn reverse-proxy (must stay **fail-open**:
   metering must never break or delay the agent's call).
