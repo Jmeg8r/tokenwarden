@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from tokenwarden.models import Usage
@@ -38,6 +38,19 @@ def _day_start_utc_iso(tz: ZoneInfo) -> str:
     """ISO timestamp for local midnight today, expressed in UTC for comparison."""
     local_midnight = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
     return local_midnight.astimezone(_UTC).isoformat()
+
+
+def _window_start_utc(tz: ZoneInfo, lookback_days: int) -> datetime:
+    """Start of the history window: local midnight `lookback_days` ago, in UTC.
+
+    Anchored to a *local* midnight so the window covers whole local days, but
+    returned in UTC so all bucketing/iteration is done on absolute time (immune
+    to DST — an hourly series stays regular across the spring/fall transitions).
+    """
+    local_midnight = (datetime.now(tz) - timedelta(days=lookback_days)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    return local_midnight.astimezone(_UTC).replace(minute=0, second=0, microsecond=0)
 
 
 class Storage:
@@ -108,6 +121,51 @@ class Storage:
                 (_day_start_utc_iso(tz),),
             ).fetchall()
         return {r["agent_id"]: float(r["s"]) for r in rows}
+
+    def hourly_spend(
+        self, tz: ZoneInfo, lookback_days: int, agent_id: str | None = None
+    ) -> list[tuple[datetime, float]]:
+        """Estimated cost bucketed into consecutive **UTC-hour** buckets over the
+        last `lookback_days`, zero-filled so the series is dense and evenly spaced
+        (a regular series is what a forecaster expects). `agent_id=None` = global.
+
+        Buckets key on absolute UTC hours rather than local hours so the spacing
+        is constant even across a DST transition. Each tuple is
+        `(utc_hour_start, cost_usd)`; the final bucket is the current (partial) hour.
+        """
+        start = _window_start_utc(tz, lookback_days)
+        end = datetime.now(_UTC).replace(minute=0, second=0, microsecond=0)
+        query = "SELECT ts, cost_usd FROM events WHERE ts >= ?"
+        params: list = [start.isoformat()]
+        if agent_id is not None:
+            query += " AND agent_id = ?"
+            params.append(agent_id)
+        with self._lock:
+            rows = self._conn.execute(query, params).fetchall()
+        buckets: dict[datetime, float] = {}
+        for r in rows:
+            hour = (
+                datetime.fromisoformat(r["ts"])
+                .astimezone(_UTC)
+                .replace(minute=0, second=0, microsecond=0)
+            )
+            buckets[hour] = buckets.get(hour, 0.0) + float(r["cost_usd"])
+        series: list[tuple[datetime, float]] = []
+        cur = start
+        while cur <= end:
+            series.append((cur, buckets.get(cur, 0.0)))
+            cur += timedelta(hours=1)
+        return series
+
+    def list_agents(self, tz: ZoneInfo, lookback_days: int) -> list[str]:
+        """Distinct agent ids seen in the last `lookback_days`, sorted."""
+        start = _window_start_utc(tz, lookback_days)
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT DISTINCT agent_id FROM events WHERE ts >= ? ORDER BY agent_id",
+                (start.isoformat(),),
+            ).fetchall()
+        return [r["agent_id"] for r in rows]
 
     def close(self) -> None:
         with self._lock:
