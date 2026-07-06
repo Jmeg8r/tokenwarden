@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 
 @dataclass(slots=True)
@@ -50,4 +51,4 @@ class Alert:
     pct: float
     day: str  # local YYYY-MM-DD
     period: str = "daily"
-    kind: str = "budget"
+    kind: Literal["budget", "projected", "anomaly"] = "budget"

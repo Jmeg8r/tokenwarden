@@ -53,20 +53,30 @@ def _seed_overrunning_db(db):
 
 def test_forecast_notify_survives_a_failing_channel(tmp_path, capsys, monkeypatch):
     """A notifier that raises must not abort the run — remaining alerts still
-    attempt delivery and the command exits 0."""
+    attempt delivery, the summary reports the failure, and the command exits 0."""
     db = tmp_path / "f.db"
     _seed_overrunning_db(db)
     cfg = tmp_path / "c.toml"
+    # Both a global and an agent budget are overrun, so the run carries >=2 alerts.
     cfg.write_text(
         f'[gateway]\ndb_path = "{db}"\ntimezone = "UTC"\n'
         "[budgets]\ndefault_agent_daily = 5.0\nglobal_daily = 5.0\n"
         '[forecasting]\nbackend = "naive"\nlookback_days = 7\n'
     )
 
-    class _FailingNotifier:
-        async def notify(self, alert):
-            raise RuntimeError("channel down")
+    attempts = []
 
-    monkeypatch.setattr("tokenwarden.notifiers.build_notifier", lambda config: _FailingNotifier())
+    class _FlakyNotifier:
+        async def notify(self, alert):
+            attempts.append(alert)
+            if len(attempts) == 1:
+                raise RuntimeError("channel down")
+
+    monkeypatch.setattr("tokenwarden.notifiers.build_notifier", lambda config: _FlakyNotifier())
     assert main(["forecast", "--config", str(cfg), "--notify"]) == 0
-    assert "sent" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    # The first alert failed, yet every remaining alert was still attempted...
+    assert len(attempts) >= 2
+    # ...and the summary reports what was actually delivered, not what was queued.
+    assert f"sent {len(attempts) - 1}/{len(attempts)} alert(s)" in out
+    assert "1 failed" in out

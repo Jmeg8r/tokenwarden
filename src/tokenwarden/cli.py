@@ -141,16 +141,26 @@ def _forecast(args: argparse.Namespace) -> int:
 
             notifier = build_notifier(config)
 
-            async def _send() -> None:
+            async def _send() -> int:
                 # One flaky channel must not drop the rest of the run's alerts.
+                delivered = 0
                 for alert in alerts:
                     try:
                         await notifier.notify(alert)
+                        delivered += 1
                     except Exception:  # noqa: BLE001
                         log.exception("failed to send alert via notifier: %s", alert)
+                return delivered
 
-            asyncio.run(_send())
-            print(f"  sent {len(alerts)} alert(s) via {config.notifier_channels or 'no channels'}")
+            delivered = asyncio.run(_send())
+            failed = len(alerts) - delivered
+            summary = (
+                f"  sent {delivered}/{len(alerts)} alert(s) via "
+                f"{config.notifier_channels or 'no channels'}"
+            )
+            if failed:
+                summary += f" ({failed} failed — see log)"
+            print(summary)
     finally:
         storage.close()
     return 0
