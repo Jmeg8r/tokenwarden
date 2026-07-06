@@ -1,5 +1,10 @@
+import logging
+import subprocess
+import sys
+
 import pytest
 
+import tokenwarden.forecast as forecast_mod
 from tokenwarden.config import Config, Forecasting
 from tokenwarden.forecast import (
     NaiveForecaster,
@@ -83,3 +88,63 @@ def test_evaluate_anomaly_flags_spike_above_band():
 def test_build_forecaster_defaults_to_naive():
     cfg = Config(forecasting=Forecasting(backend="naive"))
     assert isinstance(build_forecaster(cfg), NaiveForecaster)
+
+
+def test_build_forecaster_timesfm_falls_back_to_naive(monkeypatch, caplog):
+    """A requested timesfm backend that can't be constructed (extra absent,
+    checkpoint download fails) must degrade to naive, not crash."""
+
+    def boom(*args, **kwargs):
+        raise ImportError("timesfm not installed")
+
+    monkeypatch.setattr(forecast_mod, "TimesFMForecaster", boom)
+    cfg = Config(forecasting=Forecasting(backend="timesfm"))
+    with caplog.at_level(logging.WARNING):
+        fc = build_forecaster(cfg)
+    assert isinstance(fc, NaiveForecaster)
+    assert any("timesfm backend unavailable" in r.message for r in caplog.records)
+
+
+def _run_isolated(tmp_path, body: str):
+    """Run `body` in a fresh interpreter (isolated sys.modules) via a file — a
+    real script avoids a Python 3.13 linecache quirk with `python -c` strings."""
+    script = tmp_path / "probe.py"
+    script.write_text(body)
+    return subprocess.run([sys.executable, str(script)], capture_output=True, text=True)
+
+
+def test_gateway_import_stays_torch_free(tmp_path):
+    """Fail-open prime directive: importing the serving path must not pull in the
+    forecast module (and therefore never torch/timesfm) into the process."""
+    result = _run_isolated(
+        tmp_path,
+        "import sys, tokenwarden.gateway\n"
+        "assert 'tokenwarden.forecast' not in sys.modules, 'gateway imported forecast'\n"
+        "assert 'timesfm' not in sys.modules and 'torch' not in sys.modules\n"
+        "print('ok')\n",
+    )
+    assert result.returncode == 0, result.stderr
+    assert "ok" in result.stdout
+
+
+def test_forecast_module_import_is_lazy(tmp_path):
+    """Importing forecast.py itself must not eagerly import torch/timesfm — that
+    only happens when TimesFMForecaster is actually constructed."""
+    result = _run_isolated(
+        tmp_path,
+        "import sys, tokenwarden.forecast\n"
+        "assert 'timesfm' not in sys.modules and 'torch' not in sys.modules\n"
+        "print('ok')\n",
+    )
+    assert result.returncode == 0, result.stderr
+    assert "ok" in result.stdout
+
+
+def test_timesfm_backend_smoke():
+    """Real TimesFM inference — skipped unless the optional extra is installed."""
+    pytest.importorskip("timesfm")
+    from tokenwarden.forecast import TimesFMForecaster
+
+    fc = TimesFMForecaster(quantile=0.9).forecast([float(i % 24) for i in range(96)], horizon=6)
+    assert len(fc.point) == 6
+    assert len(fc.lower) == 6 and len(fc.upper) == 6

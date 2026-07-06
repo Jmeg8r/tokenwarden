@@ -19,6 +19,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+# Optional forecasting backend. Heavy (pulls in torch) and deliberately kept out
+# of the base install and the serving path — imported lazily by forecast.py only.
+forecast = ["timesfm[torch]>=2.5", "numpy>=1.26"]
 
 [project.scripts]
 tokenwarden = "tokenwarden.cli:main"
