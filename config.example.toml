@@ -44,3 +44,16 @@ default_agent_daily = 10.0        # applied to any agent without a specific budg
 [budgets.per_agent_daily]
 # forge = 20.0
 # scout = 5.0
+
+# Forward-looking spend forecasting for `tokenwarden forecast` (optional, off by
+# default). Runs as a separate offline reader of the spend log — never in the
+# gateway request path. The "timesfm" backend needs the optional extra:
+#   pip install "tokenwarden[forecast]"   (pulls in torch — heavy, opt-in only)
+[forecasting]
+enabled = false
+backend = "naive"          # "naive" (stdlib baseline) | "timesfm" (zero-shot TimesFM 2.5)
+lookback_days = 14         # how much history to feed the model
+quantile = 0.9             # band edge used for overrun warnings + anomaly detection
+min_history_hours = 48     # below this, forecasts are flagged low-confidence
+anomaly_factor = 1.5       # actual > this × the forecast band => runaway-agent flag
+# checkpoint = "google/timesfm-2.5-200m-pytorch"  # timesfm model id
