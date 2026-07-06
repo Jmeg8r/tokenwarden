@@ -208,6 +208,13 @@ Ship `config.example.toml`; `.gitignore` the live config.
 - **M2** — cost engine + config price table + `watchdog status`.
 - **M3** — budgets + threshold/hysteresis + Discord notifier (+ Telegram).
 - **M4** — LaunchAgent packaging, README, tests green. → **MVP ship.**
+- **Forecasting** — `forecast` CLI: forward-looking end-of-day spend projection
+  with quantile bands (warn on projected overrun *before* it lands) + forecast-band
+  anomaly detection (runaway-agent flag). Two backends behind a `Forecaster`
+  protocol: a stdlib seasonal-naive baseline and optional zero-shot TimesFM 2.5
+  (`tokenwarden[forecast]` extra). Runs as a **separate offline reader** of the
+  SQLite log — torch is never imported into the fail-open serving path (test-enforced).
+  `scripts/forecast_benchmark.py` backtests naive vs TimesFM on real history.
 - **Phase 2** — Admin Cost/Usage API collector (reconciliation, org-level
   authoritative-dollar ceiling, price-drift alerts); dashboard view; optional
   enforcement hardening; rate-limit-headroom signal for subscription agents.

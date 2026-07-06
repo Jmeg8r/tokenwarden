@@ -43,6 +43,19 @@ Part of the Fable 5 compound-framework STATE.md pilot (`~/Projects/fable5-compou
   that can't overlap other local proxies (Headroom holds 8787 → tokenwarden defaults to 8788).
 
 ## Last session — resume pointer
+- **2026-07-06** · Built the **TimesFM spend-forecasting** feature on branch
+  `feat/timesfm-forecasting` (F0→F4). New `tokenwarden forecast` command projects
+  today's end-of-day spend with quantile bands (warns on projected overrun before it
+  lands) and flags runaway-agent anomalies (spend above the forecast band). Two backends
+  behind a `Forecaster` protocol: stdlib seasonal-naive baseline (always on) + optional
+  zero-shot **TimesFM 2.5** (`tokenwarden[forecast]` extra, torch). Key invariant:
+  forecasting is a **separate offline DB reader** — `gateway.py` imports neither
+  `forecast.py` nor torch (test-enforced: `test_gateway_import_stays_torch_free`). New:
+  `src/tokenwarden/forecast.py`, `scripts/forecast_benchmark.py` (naive-vs-TimesFM
+  backtest = the `[ASTGL CONTENT]` benchmark). 57 tests + 1 skipped (TimesFM smoke,
+  gated by `importorskip`). **Next:** open the PR, triage CodeRabbit, and once the gateway
+  has ≥2 days of real hourly history, run `scripts/forecast_benchmark.py` with the
+  `forecast` extra installed to get the real TimesFM-vs-naive numbers for the post.
 - **2026-07-05** · STATE.md scaffolded as the first repo in the Fable 5 compound-framework
   STATE.md pilot. No code changed. Next: (a) exercise the Fable refusal-billing open item
   above when the framework's metering work begins; (b) confirm the public-release cut status.
