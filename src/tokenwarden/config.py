@@ -138,6 +138,12 @@ class Config:
             raise ValueError(f"forecasting.quantile must be in (0, 1): {fc.quantile}")
         if fc.lookback_days <= 0:
             raise ValueError(f"forecasting.lookback_days must be > 0: {fc.lookback_days}")
+        if fc.min_history_hours <= 0:
+            raise ValueError(
+                f"forecasting.min_history_hours must be > 0: {fc.min_history_hours}"
+            )
+        if fc.anomaly_factor <= 1:
+            raise ValueError(f"forecasting.anomaly_factor must be > 1: {fc.anomaly_factor}")
         try:
             ZoneInfo(self.timezone)
         except ZoneInfoNotFoundError as exc:

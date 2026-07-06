@@ -142,8 +142,12 @@ def _forecast(args: argparse.Namespace) -> int:
             notifier = build_notifier(config)
 
             async def _send() -> None:
+                # One flaky channel must not drop the rest of the run's alerts.
                 for alert in alerts:
-                    await notifier.notify(alert)
+                    try:
+                        await notifier.notify(alert)
+                    except Exception:  # noqa: BLE001
+                        log.exception("failed to send alert via notifier: %s", alert)
 
             asyncio.run(_send())
             print(f"  sent {len(alerts)} alert(s) via {config.notifier_channels or 'no channels'}")

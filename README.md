@@ -92,7 +92,7 @@ tokenwarden forecast --agent forge   # just one agent
 tokenwarden forecast --notify        # also send alerts via your configured channels
 ```
 
-```
+```text
 End-of-day spend forecast for 2026-07-06 (UTC), backend=naive:
   forge          projected $11.6000 (band $10.16–$14.53) / $8.00 budget
     ! [CRITICAL] Agent 'forge' daily spend projected to reach $14.53 of $8.00 budget (182%) ...

@@ -242,13 +242,17 @@ def evaluate_anomaly(
     forecaster: Forecaster,
     factor: float,
 ) -> Alert | None:
-    """Flag a completed hour whose actual spend punches above `factor`× the
+    """Flag a completed hour whose actual spend punches above `factor` times the
     one-step-ahead forecast band — a stuck loop / runaway agent. `history` must
     exclude the bucket under test. Returns a `kind="anomaly"` Alert or None."""
     if len(history) < 2 or actual <= 0:
         return None
     fc = forecaster.forecast(history, 1)
     band = fc.upper[0] if fc.upper else 0.0
+    if band <= 0 and max(history, default=0.0) <= 0:
+        # No spend signal at all in the baseline (idle / newly-onboarded agent) —
+        # nothing to compare against, so a first charge is not an "anomaly".
+        return None
     threshold = band * factor
     if actual <= threshold:
         return None

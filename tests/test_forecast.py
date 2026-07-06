@@ -85,6 +85,19 @@ def test_evaluate_anomaly_flags_spike_above_band():
     assert normal is None
 
 
+def test_evaluate_anomaly_ignores_zero_baseline_first_charge():
+    """An idle/newly-onboarded agent (all-zero history) must NOT fire a spurious
+    critical anomaly on its first charge — the band is 0, so there's nothing to
+    compare against."""
+    forecaster = NaiveForecaster(quantile=0.9, min_history_hours=48)
+    idle_history = [0.0] * 48
+    assert (
+        evaluate_anomaly("agent:new", "2026-07-06", idle_history, actual=0.01,
+                         forecaster=forecaster, factor=1.5)
+        is None
+    )
+
+
 def test_build_forecaster_defaults_to_naive():
     cfg = Config(forecasting=Forecasting(backend="naive"))
     assert isinstance(build_forecaster(cfg), NaiveForecaster)

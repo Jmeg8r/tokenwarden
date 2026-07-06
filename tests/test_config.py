@@ -44,6 +44,8 @@ def test_forecasting_section_parsed(tmp_path):
         '[forecasting]\nbackend = "prophet"\n',   # unknown backend
         "[forecasting]\nquantile = 1.5\n",        # out of (0,1)
         "[forecasting]\nlookback_days = 0\n",     # must be > 0
+        "[forecasting]\nmin_history_hours = 0\n", # must be > 0
+        "[forecasting]\nanomaly_factor = 1.0\n",  # must be > 1
     ],
 )
 def test_forecasting_invalid_config_rejected(tmp_path, body):
