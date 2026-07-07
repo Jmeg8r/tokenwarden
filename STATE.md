@@ -43,6 +43,14 @@ Part of the Fable 5 compound-framework STATE.md pilot (`~/Projects/fable5-compou
   that can't overlap other local proxies (Headroom holds 8787 → tokenwarden defaults to 8788).
 
 ## Last session — resume pointer
+- **2026-07-07** · **CLAUDE.md rewritten as a self-contained operating manual** (invariants
+  table, 12-mistake catalog with preventing rules, checkable quality bars per deliverable,
+  exact escalation rules) + three repo skills added under `.claude/skills/`:
+  `tokenwarden-ship` (pre-flight → PR → CodeRabbit triage loop), `session-state`
+  (STATE.md bookends), `price-sync` (sourced price-table updates). All documented commands
+  executed and verified this session; `make test` = 62 passed, 1 skipped. On branch
+  `docs/claude-md-operating-manual`. **Next:** triage CodeRabbit on the PR, then the
+  maintainer merges.
 - **2026-07-06 (later)** · **PR #6 SHIP phase.** All 4 CodeRabbit actionable comments
   fixed + resolved (`33e5347`); follow-up `b0bd079` made the `--notify` delivery summary
   honest (delivered/failed counts, not "sent N" on failure), typed `Alert.kind` as a
