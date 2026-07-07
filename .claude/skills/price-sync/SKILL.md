@@ -72,7 +72,7 @@ the PR if a price changed, so nobody expects historical rows to shift.
 
 Commit as one atomic conventional commit, citing the source:
 
-```
+```text
 feat: price table for <model-id> (in $X/MTok, out $Y/MTok)
 
 Source: <URL or "maintainer, YYYY-MM-DD">

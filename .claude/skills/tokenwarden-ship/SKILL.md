@@ -17,10 +17,14 @@ Run all of these; stop and report if any fails. Do not push a branch that fails 
    `feat/|fix/|docs/|chore/` + slug; if it doesn't, ask before renaming.
 2. **No local state staged or committed.**
    ```bash
-   git diff --cached --name-only | grep -E '^(config\.toml|tokenwarden\.db)' && echo "FAIL: local state staged"
-   git log main..HEAD --name-only --format= | sort -u | grep -E '^(config\.toml|tokenwarden\.db)' && echo "FAIL: local state committed"
+   # end deliberately unanchored: must also catch tokenwarden.db-wal / -shm
+   if git diff --cached --name-only | grep -qE '^(config\.toml|tokenwarden\.db)'; then
+     echo "FAIL: local state staged"; exit 1
+   fi
+   if git log main..HEAD --name-only --format= | sort -u | grep -qE '^(config\.toml|tokenwarden\.db)'; then
+     echo "FAIL: local state committed"; exit 1
+   fi
    ```
-   Both greps must come back empty.
 3. **Tests.** `make test` — everything passes (one skip, the gated TimesFM smoke, is
    expected). Paste the summary line; you will need it for the PR body.
 4. **Invariant greps** (fast checks for the repo's highest-damage mistakes):
