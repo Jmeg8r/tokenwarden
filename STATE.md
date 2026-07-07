@@ -50,8 +50,9 @@ Part of the Fable 5 compound-framework STATE.md pilot (`~/Projects/fable5-compou
   on 3.11/3.12/3.13, 61 passed + 1 skipped, `test_gateway_import_stays_torch_free` holds.
   **Benchmark still blocked:** `tokenwarden.db` has 0 events — the gateway has recorded
   no real traffic, so `scripts/forecast_benchmark.py` has nothing to backtest. Run the
-  gateway for ≥2 days of real hourly history first. **Next:** James's approval + quiz
-  gate → merge PR #6.
+  gateway for ≥2 days of real hourly history first. **Next:** James's approval → merge
+  PR #6. (Quiz-gate blocker retired 2026-07-06: /quiz-me is on-request learning, never a
+  merge blocker.)
 - **2026-07-06** · Built the **TimesFM spend-forecasting** feature on branch
   `feat/timesfm-forecasting` (F0→F4). New `tokenwarden forecast` command projects
   today's end-of-day spend with quantile bands (warns on projected overrun before it
