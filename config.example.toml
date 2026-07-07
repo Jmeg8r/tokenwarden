@@ -19,6 +19,7 @@ critical_pct = 100
 # Channels to alert on. Secrets come from env vars, NEVER this file:
 #   discord  -> TOKENWARDEN_DISCORD_WEBHOOK_URL
 #   telegram -> TOKENWARDEN_TELEGRAM_BOT_TOKEN, TOKENWARDEN_TELEGRAM_CHAT_ID
+#               (optional TOKENWARDEN_TELEGRAM_THREAD_ID targets a forum topic/thread)
 # Leave empty ([]) to log-only without sending anywhere.
 channels = ["discord"]
 
