@@ -19,6 +19,9 @@ NOTIFY_TIMEOUT_SECONDS = 10.0
 ENV_DISCORD_WEBHOOK = "TOKENWARDEN_DISCORD_WEBHOOK_URL"
 ENV_TELEGRAM_TOKEN = "TOKENWARDEN_TELEGRAM_BOT_TOKEN"
 ENV_TELEGRAM_CHAT = "TOKENWARDEN_TELEGRAM_CHAT_ID"
+# Optional: send to a specific forum topic (thread) within the chat. When set, the
+# value is passed as `message_thread_id` so alerts land in that topic, not General.
+ENV_TELEGRAM_THREAD = "TOKENWARDEN_TELEGRAM_THREAD_ID"
 
 
 def format_alert(alert: Alert) -> str:
@@ -77,13 +80,22 @@ class DiscordNotifier:
 
 
 class TelegramNotifier:
-    def __init__(self, bot_token: str, chat_id: str, client: httpx.AsyncClient | None = None) -> None:
+    def __init__(
+        self,
+        bot_token: str,
+        chat_id: str,
+        thread_id: str | None = None,
+        client: httpx.AsyncClient | None = None,
+    ) -> None:
         self._url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
         self._chat_id = chat_id
+        self._thread_id = thread_id
         self._client = client
 
     async def notify(self, alert: Alert) -> None:
         payload = {"chat_id": self._chat_id, "text": format_alert(alert)}
+        if self._thread_id:
+            payload["message_thread_id"] = self._thread_id
         await _post(self._client, self._url, payload, "Telegram")
 
 
@@ -110,8 +122,9 @@ def build_notifier(config: Config) -> Notifier:
         elif channel == "telegram":
             token = os.environ.get(ENV_TELEGRAM_TOKEN)
             chat = os.environ.get(ENV_TELEGRAM_CHAT)
+            thread = os.environ.get(ENV_TELEGRAM_THREAD)  # optional forum-topic id
             if token and chat:
-                notifiers.append(TelegramNotifier(token, chat))
+                notifiers.append(TelegramNotifier(token, chat, thread_id=thread))
             else:
                 log.warning(
                     "notifier 'telegram' enabled but %s/%s not set — skipping",

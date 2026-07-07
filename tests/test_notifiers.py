@@ -56,6 +56,23 @@ def test_telegram_posts_sendmessage():
 
     assert "/botTOKEN/sendMessage" in captured["url"]
     assert captured["body"]["chat_id"] == "CHAT"
+    assert "message_thread_id" not in captured["body"]  # omitted when no thread set
+
+
+def test_telegram_includes_thread_id_when_set():
+    captured = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(req.content)
+        return httpx.Response(200, json={"ok": True})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    notifier = TelegramNotifier("TOKEN", "CHAT", thread_id="25", client=client)
+    asyncio.run(notifier.notify(_alert()))
+    asyncio.run(client.aclose())
+
+    assert captured["body"]["chat_id"] == "CHAT"
+    assert captured["body"]["message_thread_id"] == "25"  # lands in the forum topic
 
 
 def test_notifier_swallows_http_error():
