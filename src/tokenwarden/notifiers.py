@@ -24,6 +24,17 @@ ENV_TELEGRAM_CHAT = "TOKENWARDEN_TELEGRAM_CHAT_ID"
 def format_alert(alert: Alert) -> str:
     marker = "[CRITICAL]" if alert.level == "critical" else "[WARN]"
     who = "Global" if alert.scope == "global" else f"Agent '{alert.scope.split(':', 1)[1]}'"
+    if alert.kind == "projected":
+        return (
+            f"{marker} tokenwarden: {who} {alert.period} spend projected to reach "
+            f"${alert.spent:,.2f} of ${alert.budget:,.2f} budget "
+            f"({alert.pct:.0f}%) by end of {alert.day}"
+        )
+    if alert.kind == "anomaly":
+        return (
+            f"{marker} tokenwarden: {who} anomalous spend ${alert.spent:,.2f} "
+            f"exceeds the forecast band of ${alert.budget:,.2f} on {alert.day}"
+        )
     return (
         f"{marker} tokenwarden: {who} {alert.period} spend "
         f"${alert.spent:,.2f} of ${alert.budget:,.2f} budget "

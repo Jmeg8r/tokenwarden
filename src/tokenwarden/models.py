@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 
 @dataclass(slots=True)
@@ -33,7 +34,15 @@ class Usage:
 
 @dataclass(slots=True)
 class Alert:
-    """A budget-threshold crossing, ready to be rendered into a notification."""
+    """A budget signal, ready to be rendered into a notification.
+
+    `kind` distinguishes the three signal types that share this shape:
+      - "budget"    — today's *actual* spend crossed a threshold (backward-looking).
+      - "projected" — today's spend is *forecast* to breach the budget (`spent` is
+                      the projected end-of-day total).
+      - "anomaly"   — actual spend punched above the forecast's upper band (`budget`
+                      carries the band the value exceeded).
+    """
 
     scope: str  # "global" or "agent:<id>"
     level: str  # "warn" | "critical"
@@ -42,3 +51,4 @@ class Alert:
     pct: float
     day: str  # local YYYY-MM-DD
     period: str = "daily"
+    kind: Literal["budget", "projected", "anomaly"] = "budget"

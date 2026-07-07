@@ -79,6 +79,44 @@ known until the response); the next one is blocked.
 > surface the error). If you'd rather agents fail fast without retrying, **403** is a
 > one-line change.
 
+## Forecasting (optional, forward-looking)
+
+Budget alerts are backward-looking — they fire *after* you've crossed a threshold.
+`tokenwarden forecast` adds a forward-looking view: it reads the spend history you've
+already logged and projects **today's end-of-day total**, so it can warn *before* an
+overrun lands and flag a runaway agent whose spend punches above its normal band.
+
+```bash
+tokenwarden forecast                 # project every agent + global for the rest of today
+tokenwarden forecast --agent forge   # just one agent
+tokenwarden forecast --notify        # also send alerts via your configured channels
+```
+
+```text
+End-of-day spend forecast for 2026-07-06 (UTC), backend=naive:
+  forge          projected $11.6000 (band $10.16–$14.53) / $8.00 budget
+    ! [CRITICAL] Agent 'forge' daily spend projected to reach $14.53 of $8.00 budget (182%) ...
+  scout          projected $11.1200 (band $10.70–$18.70) / $8.00 budget
+    ! [CRITICAL] Agent 'scout' anomalous spend $9.10 exceeds the forecast band of $0.09 ...
+```
+
+Two backends, selected in `[forecasting]`:
+
+- **`naive`** (default) — a stdlib seasonal baseline. No extra dependencies.
+- **`timesfm`** — zero-shot [TimesFM 2.5](https://github.com/google-research/timesfm),
+  Google's time-series foundation model. Needs the optional extra:
+  ```bash
+  pip install "tokenwarden[forecast]"   # pulls in torch — heavy, opt-in only
+  ```
+
+Forecasting runs as a **separate process that reads the DB read-only** — the heavy
+model is never imported into the `serve` gateway, so the fail-open request path stays
+untouched (enforced by a test). Compare the two backends on your own data with
+`python scripts/forecast_benchmark.py --config config.toml`.
+
+> Early on, a young DB has too little history for a confident forecast; those lines are
+> marked `[low confidence: sparse history]`. It sharpens as the gateway accumulates days.
+
 ## Status
 
 - **M0 — config** ✅ TOML schema, validation, configurable price table.
@@ -87,6 +125,8 @@ known until the response); the next one is blocked.
 - **M2** cost-engine polish + richer `status`/`report`.
 - **M3 — alerts** ✅ daily budget evaluation, warn/critical with per-day hysteresis, Discord + Telegram notifiers.
 - **M4 — packaging** ✅ pinned deps + `requirements.txt`, LaunchAgent template, GitHub Actions CI, Makefile.
+- **Forecasting** ✅ `forecast` CLI: end-of-day projection + anomaly detection, naive
+  baseline + optional zero-shot TimesFM, isolated from the serving path.
 - **Phase 2** Admin Cost/Usage API reconciliation + drift detection.
 
 ## What it can't see (yet)

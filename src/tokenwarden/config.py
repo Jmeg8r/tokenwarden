@@ -22,6 +22,17 @@ DEFAULT_AGENT_HEADER = "x-watchdog-agent"
 DEFAULT_WARN_PCT = 80.0
 DEFAULT_CRITICAL_PCT = 100.0
 
+# Forecasting defaults. The naive baseline needs no extra deps; "timesfm" pulls
+# in the optional `forecast` extra (torch) and is loaded lazily, out of the
+# serving path. See forecast.py.
+DEFAULT_FORECAST_BACKEND = "naive"
+DEFAULT_FORECAST_LOOKBACK_DAYS = 14
+DEFAULT_FORECAST_QUANTILE = 0.9
+DEFAULT_FORECAST_MIN_HISTORY_HOURS = 48
+DEFAULT_FORECAST_ANOMALY_FACTOR = 1.5
+DEFAULT_FORECAST_CHECKPOINT = "google/timesfm-2.5-200m-pytorch"
+FORECAST_BACKENDS = {"naive", "timesfm"}
+
 # Cache pricing is derived from input price by these multipliers when not given
 # explicitly: reads are ~0.1x input, 5-minute writes ~1.25x input.
 _CACHE_READ_MULT = 0.1
@@ -71,6 +82,23 @@ class Budgets:
 
 
 @dataclass(slots=True)
+class Forecasting:
+    """Settings for the forward-looking spend forecaster (`tokenwarden forecast`).
+
+    Backwards-looking budget alerting is unaffected by these; forecasting is a
+    separate, offline reader of the same SQLite log.
+    """
+
+    enabled: bool = False
+    backend: str = DEFAULT_FORECAST_BACKEND  # "naive" | "timesfm"
+    lookback_days: int = DEFAULT_FORECAST_LOOKBACK_DAYS
+    quantile: float = DEFAULT_FORECAST_QUANTILE  # band edge for warn/anomaly, e.g. 0.9
+    min_history_hours: int = DEFAULT_FORECAST_MIN_HISTORY_HOURS
+    anomaly_factor: float = DEFAULT_FORECAST_ANOMALY_FACTOR
+    checkpoint: str = DEFAULT_FORECAST_CHECKPOINT
+
+
+@dataclass(slots=True)
 class Config:
     upstream_url: str = DEFAULT_UPSTREAM
     host: str = DEFAULT_HOST
@@ -85,6 +113,7 @@ class Config:
     enforce: bool = False
     debug_log_bodies: bool = False
     notifier_channels: list[str] = field(default_factory=list)
+    forecasting: Forecasting = field(default_factory=Forecasting)
 
     @property
     def tzinfo(self) -> ZoneInfo:
@@ -100,6 +129,21 @@ class Config:
         bad_channels = set(self.notifier_channels) - {"discord", "telegram"}
         if bad_channels:
             raise ValueError(f"unknown notifier channels: {sorted(bad_channels)}")
+        fc = self.forecasting
+        if fc.backend not in FORECAST_BACKENDS:
+            raise ValueError(
+                f"forecasting.backend must be one of {sorted(FORECAST_BACKENDS)}: {fc.backend!r}"
+            )
+        if not 0 < fc.quantile < 1:
+            raise ValueError(f"forecasting.quantile must be in (0, 1): {fc.quantile}")
+        if fc.lookback_days <= 0:
+            raise ValueError(f"forecasting.lookback_days must be > 0: {fc.lookback_days}")
+        if fc.min_history_hours <= 0:
+            raise ValueError(
+                f"forecasting.min_history_hours must be > 0: {fc.min_history_hours}"
+            )
+        if fc.anomaly_factor <= 1:
+            raise ValueError(f"forecasting.anomaly_factor must be > 1: {fc.anomaly_factor}")
         try:
             ZoneInfo(self.timezone)
         except ZoneInfoNotFoundError as exc:
@@ -143,6 +187,18 @@ class Config:
             global_monthly=b.get("global_monthly"),
             default_agent_daily=b.get("default_agent_daily"),
             per_agent_daily={k: float(v) for k, v in b.get("per_agent_daily", {}).items()},
+        )
+
+        fc = data.get("forecasting", {})
+        d = cfg.forecasting
+        cfg.forecasting = Forecasting(
+            enabled=bool(fc.get("enabled", d.enabled)),
+            backend=fc.get("backend", d.backend),
+            lookback_days=int(fc.get("lookback_days", d.lookback_days)),
+            quantile=float(fc.get("quantile", d.quantile)),
+            min_history_hours=int(fc.get("min_history_hours", d.min_history_hours)),
+            anomaly_factor=float(fc.get("anomaly_factor", d.anomaly_factor)),
+            checkpoint=fc.get("checkpoint", d.checkpoint),
         )
 
         cfg.validate()
