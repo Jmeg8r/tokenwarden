@@ -1,0 +1,378 @@
+# lefthook.yml — ASTGL standard local gate stack.
+#
+# Design rule: cheap and always-on at pre-commit, expensive at pre-push,
+# metered (CodeRabbit) never automatic.
+#
+#   pre-commit  ~1-3s   format, lint, secrets on staged files only
+#   pre-push    ~5-60s  tests, workflow lint, full-history secret scan
+#   manual      metered `cr review` — you decide when to spend it
+#
+# Escape hatches:
+#   LEFTHOOK=0 git commit ...            skip everything
+#   LEFTHOOK_EXCLUDE=tests git push      skip one job
+#   git commit --no-verify               nuclear option
+
+min_version: 1.5.0
+colors: true
+
+# ---------------------------------------------------------------------------
+pre-commit:
+  # SEQUENTIAL ON PURPOSE — this was `parallel: true` and that was a correctness bug,
+  # not just a lock-contention annoyance.
+  #
+  # `format-python` carries `stage_fixed: true`, so ruff re-runs `git add` on the files
+  # it rewrites. Run concurrently with `secrets` / `secrets-binaries`, which read the
+  # STAGED index, the two race: a file can be scanned and then reformatted-and-restaged
+  # afterwards, so the bytes that get committed are not the bytes that were scanned.
+  # That is a hole in the data-egress boundary, reachable without anyone doing anything
+  # unusual. The visible symptom is the milder one — `.git/index.lock: File exists`.
+  #
+  # Commands run in declaration order, so formatting completes (and finishes staging)
+  # before any scanner reads the index. Cost is small: every job here is either a
+  # fast no-op on a glob miss or ~1s, and correctness of the scan outranks the
+  # "cheap and always-on" budget in the header.
+  parallel: false
+  commands:
+
+    format-python:
+      tags: format
+      glob: "*.py"
+      run: ruff format {staged_files}
+      stage_fixed: true
+
+    # ADVISORY, by deliberate choice — reports but does not block.
+    #
+    # WHY: a repo with pre-existing lint debt fails these on the first commit,
+    # every commit, before you have touched the offending file. That teaches you
+    # to reach for LEFTHOOK=0, and a gate you habitually bypass protects nothing
+    # while still costing you the pause. Secrets, commit-msg, big-files and
+    # tests stay hard: those catch things you cannot un-ship.
+    #
+    # Note there is no --fix / stage_fixed here. Advisory means REPORT. A job
+    # that silently rewrites your source while claiming to be non-blocking is
+    # the worst of both — `ruff --fix` will drop `# noqa` directives it judges
+    # unused, which during this kit's pilot removed a `# noqa: E402` that
+    # existed because matplotlib.use("Agg") must precede the pyplot import.
+    #
+    # Making these blocking again is a one-line change: drop the `|| true`.
+    lint-python:
+      tags: lint
+      glob: "*.py"
+      run: ruff check {staged_files} || true
+
+    lint-shell:
+      tags: lint
+      glob: "*.{sh,bash}"
+      run: shellcheck {staged_files} || true
+
+    lint-powershell:
+      tags: lint
+      glob: "*.{ps1,psm1,psd1}"
+      run: >
+        pwsh -NoProfile -Command
+        "$r = Invoke-ScriptAnalyzer -Path {staged_files} -Severity Error,Warning;
+         if ($r) { $r | Format-Table -AutoSize; exit 1 }"
+
+    lint-yaml:
+      tags: lint
+      glob: "*.{yml,yaml}"
+      exclude: "lefthook.yml|.coderabbit.yaml"
+      run: yamllint -d relaxed {staged_files}
+
+    # The single most important hook in this file. Secrets must never reach
+    # GitHub *or* CodeRabbit's cloud. This is your data-egress boundary.
+    #
+    # Routed through scripts/gitleaks-guard.sh rather than calling gitleaks directly.
+    # WHY: a bare `gitleaks` runs whatever binary is on PATH, and allowlist semantics
+    # differ across versions — local runs used 8.30.1 while a CodeRabbit review sandbox
+    # on PR #5 reported 1.7.3. A scanner whose version you cannot name is a scanner
+    # whose coverage you cannot state. The guard asserts a floor and then execs
+    # gitleaks; the version lives in scripts/gitleaks-version.env.
+    #
+    # `git --staged` rather than the old `protect --staged`: `protect` is a deprecated
+    # alias, already absent from `gitleaks --help` in 8.30.1 and on its way out. Both
+    # forms were checked against the same staged fixture and produce identical results
+    # (scripts/test-gitleaks-guard.sh asserts the `git --staged` path specifically).
+    secrets:
+      tags: security
+      run: ./scripts/gitleaks-guard.sh git --staged --redact --no-banner --verbose
+
+    # Second pass for what the gate above provably cannot see.
+    #
+    # WHY this is a separate step and not a config tweak: gitleaks' built-in
+    # allowlist -- inherited by .gitleaks.toml via `[extend] useDefault = true`
+    # -- skips pdf/xlsx/docx/bin/exe BY PATH, so `secrets` prints "no leaks
+    # found" after reading ~0 bytes of them. Verified 2026-08-08 on gitleaks
+    # 8.30.1. You cannot fix that in .gitleaks.toml: the exclusion is upstream,
+    # and dropping useDefault to escape it would discard the entire built-in
+    # ruleset -- a far worse trade. The script sidesteps it by changing the PATH
+    # gitleaks sees (a *.zip temp name, or extracted text via stdin), which keeps
+    # .gitleaks.toml as the single source of truth with every built-in rule live.
+    #
+    # It reports N-scanned and fails closed: a file it should have been able to
+    # read but could not comes back UNKNOWN, never clean.
+    secrets-binaries:
+      tags: security
+      run: scripts/scan-staged-binaries.sh
+
+    # Aikido secret scanner.
+    #
+    # WHY this lives here: this machine sets core.hooksPath globally to
+    # ~/.git-hooks, where an Aikido pre-commit hook runs in every repo. Because
+    # core.hooksPath makes Git ignore .git/hooks entirely, 10-repo-init.sh sets
+    # a repo-LOCAL core.hooksPath=.git/hooks so lefthook's hooks fire at all.
+    # That local override also takes this repo out of Aikido's global reach, so
+    # the scan is re-attached here rather than lost.
+    #
+    # Guarded so the template stays portable: no scanner, no-op, no failure.
+    aikido:
+      tags: security
+      run: |
+        SCANNER="$HOME/.local/bin/aikido-local-scanner"
+        [ -x "$SCANNER" ] || exit 0
+        "$SCANNER" pre-commit-scan "$(git rev-parse --show-toplevel)"
+
+    # Catch broken workflows before they burn Actions minutes on a flaky day.
+    lint-workflows:
+      tags: lint
+      glob: ".github/workflows/*.{yml,yaml}"
+      run: actionlint {staged_files}
+
+    # Keep the CodeRabbit config honest.
+    #
+    # Requires CLI >= 0.7.0. Older builds answer "Unknown command: config" and
+    # this gate fails on the first commit that stages .coderabbit.yaml — which
+    # is the provisioning commit itself. 00-bootstrap-machine.sh warns on an
+    # older CLI; upgrade with `brew upgrade --cask coderabbit`.
+    #
+    # Note the schema caps tone_instructions at 250 characters, and the CLI
+    # treats an over-length value as an ERROR. Measure before editing.
+    validate-coderabbit:
+      tags: config
+      glob: ".coderabbit.yaml"
+      run: cr config validate
+
+    # Fail fast on accidentally committed large files.
+    #
+    # WHY this job enumerates the index itself instead of taking {staged_files}:
+    # lefthook filters that list to paths present in the WORKING TREE, so
+    # `git add big.bin` followed by `rm big.bin` sent the blob into the commit
+    # unchecked. Measured: git reports the path, lefthook passes an empty list
+    # and then skips the job outright -- the log line is literally
+    # "no-big-files (skip) no files for inspection". The gate does not pass,
+    # it never runs, which is why this is a path-source fix and not a
+    # measurement fix: no care inside the loop can see a file the loop is
+    # never given.
+    #
+    # `git diff --cached --raw` is the source because one record carries
+    # everything needed: the entry exists regardless of the working tree, the
+    # destination blob sha is right there, the mode identifies submodules, and
+    # the path follows a TAB (git C-quotes anything with a newline, so one
+    # record stays on one line). Not a whitespace fix — lefthook does quote
+    # {staged_files} correctly, verified — but it does drop the dependency on
+    # that quoting, the same way reading the index drops the dependency on
+    # lefthook's stashing below.
+    #
+    # WHY the size comes from the staged blob and not the working tree: for
+    # ordinary file shapes they differ, and `wc -c` measured the wrong one.
+    #   - symlink: `wc -c` follows it and reports the TARGET's size, while the
+    #     blob is just the link path
+    #   - clean filter (git-lfs): the working tree holds the whole asset, the
+    #     blob is a small pointer
+    # The old check blocked both — advising you to "use LFS" about a file
+    # already stored in LFS. Note it did NOT leak a blob on a stage-then-shrink,
+    # contrary to the reasoning in astgl-articles PR 44: lefthook hides
+    # partially staged files, so the working tree already matched the staged
+    # content and the old check blocked there too.
+    #
+    # The gitlink skip is required now that the index is the source: a submodule
+    # is mode 160000 and points at a commit in the SUBMODULE's object store,
+    # which this repo does not have, so `git cat-file` fails on it. Taking the
+    # mode from the same --raw record makes the check free; a per-file
+    # `git ls-files -s` probe doubled the loop (5.6s -> 10.6s over 200 files).
+    #
+    # The filter is ACMRT, not ACMR. A type change counts: if HEAD has a
+    # symlink at a path and the index now has a 6MB regular file there, the
+    # status is T and ACMR enumerates NOTHING -- verified, the blob went
+    # straight through. D is excluded because a deletion stages no blob, and
+    # U because an unmerged entry has no single destination sha and would
+    # abort the hook mid conflict-resolution.
+    #
+    # The rejection message prints exact bytes, not a rounded unit. 1048576 is
+    # a MiB, and the old `$((size/1048576))MB` both mislabelled it and truncated:
+    # a blob one byte over the limit reported "is 5MB" against a 5MB limit,
+    # reading as though it were AT the limit rather than over it. The threshold
+    # lives in LIMIT so the comparison and the message cannot drift apart.
+    #
+    # `set -eu` is the fail-closed backstop: an unreadable entry aborts the hook
+    # and REFUSES the commit rather than skipping the file. Two shapes here are
+    # deliberate — the loop is fed by REDIRECTION, not a pipe, so `exit 1` exits
+    # the hook instead of a subshell; and the gitlink test is an `if`, not
+    # `&& continue`, because a failing `&&` list would itself trip errexit.
+    no-big-files:
+      tags: hygiene
+      run: |
+        set -eu
+        LIMIT=5242880
+        TAB=$(printf '\t')
+        staged=$(mktemp)
+        trap 'rm -f "$staged"' EXIT
+        git diff --cached --raw --diff-filter=ACMRT > "$staged"
+        while IFS= read -r rec; do
+          # :<srcmode> <dstmode> <srcsha> <dstsha> <status><TAB><path>
+          r=${rec#:}
+          r=${r#* }
+          dstmode=${r%% *}; r=${r#* }
+          r=${r#* }
+          dstsha=${r%% *}; r=${r#* }
+          path=${r##*"$TAB"}
+          if [ "$dstmode" = 160000 ]; then
+            continue
+          fi
+          # An all-zero destination sha has no object to size. Only status D
+          # produces one and D is already filtered out, so this is defensive:
+          # if some git version emits one, cat-file would fail and set -e would
+          # refuse the commit. Costs one string comparison, no subprocess.
+          case "$dstsha" in
+            *[!0]*) ;;
+            *) continue ;;
+          esac
+          size=$(git cat-file -s "$dstsha")
+          if [ "$size" -gt "$LIMIT" ]; then
+            printf '✗ %s is %s bytes, over the %s byte limit — use LFS or add to .gitignore\n' \
+              "$path" "$size" "$LIMIT"
+            exit 1
+          fi
+        done < "$staged"
+
+# ---------------------------------------------------------------------------
+commit-msg:
+  commands:
+    conventional:
+      # CodeRabbit and `gh pr create --fill` both key off commit subjects.
+      # Consistent prefixes make PR titles write themselves.
+      run: |
+        head -n1 {1} | grep -qE '^(feat|fix|docs|refactor|test|chore|perf|ci|build|revert)(\(.+\))?!?: .{3,}' || {
+          echo "✗ Commit subject must be conventional, e.g.:"
+          echo "    feat(ladder): add project 07 file walker"
+          echo "    fix(jdex): handle missing index on first run"
+          exit 1
+        }
+
+# ---------------------------------------------------------------------------
+pre-push:
+  parallel: false
+  commands:
+
+    tests:
+      tags: tests
+      run: |
+        if [ -f pyproject.toml ] && grep -q pytest pyproject.toml 2>/dev/null; then
+          pytest -q --maxfail=1
+        elif [ -d tests ]; then
+          pytest -q --maxfail=1
+        else
+          echo "  (no tests configured — skipping)"
+        fi
+
+    typecheck:
+      tags: types
+      run: |
+        if command -v mypy >/dev/null 2>&1 && [ -f pyproject.toml ]; then
+          mypy . || true   # advisory until the codebase is fully annotated
+        fi
+
+    # Prove the scanner still behaves the way .gitleaks.toml says it does.
+    #
+    # WHY this runs BEFORE secrets-history: the history scan's verdict is only worth
+    # what the scanner's coverage is worth. A version floor rules out the catastrophic
+    # old-binary case but says nothing about semantic drift above the floor, so the
+    # coverage claims are asserted directly. Costs ~1s; runs on this machine on purpose,
+    # because the installed binary is a property of this machine and CI cannot check it.
+    secret-scan-selftest:
+      tags: security
+      run: ./scripts/test-gitleaks-guard.sh
+
+    # Scan the commits actually being pushed.
+    #
+    # WHY the range is computed rather than hardcoded to @{push}: that revision
+    # only resolves once the branch HAS an upstream. With push.autoSetupRemote
+    # enabled (00-bootstrap-machine.sh sets it globally) the upstream is created
+    # BY the push — so during pre-push on a brand-new branch @{push} fails with
+    # "no upstream configured", and the gate blocks the first push of every
+    # feature branch. A gate that fires on every new branch is a gate you learn
+    # to bypass, which costs more than it protects.
+    secrets-history:
+      tags: security
+      run: |
+        if git rev-parse --verify --quiet '@{push}' >/dev/null 2>&1; then
+          RANGE="@{push}..HEAD"
+        else
+          # No upstream yet. Diff against the remote's default branch if we can
+          # see it; otherwise scan the whole history (first push of a new repo).
+          BASE=""
+          for c in main master; do
+            git show-ref --verify --quiet "refs/remotes/origin/$c" && { BASE="origin/$c"; break; }
+          done
+          if [ -n "$BASE" ]; then RANGE="$BASE..HEAD"; else RANGE=""; fi
+        fi
+        if [ -n "$RANGE" ]; then
+          ./scripts/gitleaks-guard.sh git --no-banner --redact --log-opts="$RANGE"
+        else
+          ./scripts/gitleaks-guard.sh git --no-banner --redact
+        fi
+
+    workflows:
+      tags: lint
+      run: |
+        if [ -d .github/workflows ]; then
+          actionlint
+        fi
+
+    # The binary secret gate is itself testable, so test it. A scanner nobody
+    # verifies is how the original hole survived review in the first place.
+    selftest-binary-scan:
+      tags: security
+      #
+      # The `[ -x ]` form used to be the whole condition, which meant that losing the
+      # execute bit turned this into a green check that ran nothing -- precisely the
+      # defect the gate exists to catch, sitting inside the gate. `secret-scan-selftest`
+      # above calls its script directly, so the two security self-tests behaved
+      # differently on the identical fault. Now a present-but-unexecutable script is
+      # reported and run via bash rather than skipped, and only genuine ABSENCE is
+      # tolerated (the template ships to repos that may not carry this script yet).
+      run: |
+        if [ -x scripts/selftest-binary-scan.sh ]; then
+          scripts/selftest-binary-scan.sh
+        elif [ -f scripts/selftest-binary-scan.sh ]; then
+          echo "! scripts/selftest-binary-scan.sh is present but not executable —"
+          echo "  running it via bash. Restore the mode: chmod +x scripts/selftest-binary-scan.sh"
+          bash scripts/selftest-binary-scan.sh
+        fi
+
+# ---------------------------------------------------------------------------
+# Metered CodeRabbit review — NOT wired to a git hook on purpose.
+# Free tier is 3 reviews/hour; the usage add-on bills per file reviewed.
+# Run deliberately:  lefthook run review
+review:
+  commands:
+    coderabbit:
+      # BASE SELECTION. `.coderabbit.yaml` sets `base_branches: [".*"]`, so the PR bot
+      # reviews into ANY base. A hardcoded `--base main` reviewed a different
+      # comparison than the bot for any PR not targeting main -- a stacked PR reads as
+      # containing its whole parent branch -- while `.coderabbit.yaml` claims local and
+      # PR review agree with each other. Shipping an entire hardening stack unreviewed
+      # is the failure that claim was supposed to prevent.
+      #
+      # Order: CR_BASE override -> the open PR's real base (via gh) -> main. The gh
+      # lookup is best-effort; it is absent or unauthenticated on plenty of machines,
+      # and this is a metered convenience command, not a gate. The base actually used
+      # is ECHOED, because reviewing the wrong comparison is invisible in the output.
+      run: |
+        base="${CR_BASE:-}"
+        if [ -z "$base" ] && command -v gh >/dev/null 2>&1; then
+          base="$(gh pr view --json baseRefName --jq .baseRefName 2>/dev/null || true)"
+        fi
+        [ -z "$base" ] && base=main
+        echo "cr review --base $base   (override: CR_BASE=<branch> lefthook run review)"
+        cr review --base "$base"
