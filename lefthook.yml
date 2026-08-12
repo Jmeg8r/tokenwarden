@@ -385,17 +385,51 @@ pre-push:
         # Shell suites (tests/test-*.sh) are deliberately still NOT run here.
         # Making 63 repos start executing them on pre-push is a separate
         # decision with its own blast radius.
-        if ! command -v pytest >/dev/null 2>&1; then
+        # WHICH pytest, and why PATH is the wrong question. `command -v pytest`
+        # finds whatever the shell resolves globally, which is frequently NOT the
+        # environment the project's own deps live in. Verified 2026-08-10 in
+        # substack-scheduler: the repo pinned 3.11.7 in .python-version and
+        # carried its own .venv, yet `pytest` resolved to /opt/homebrew/bin/pytest
+        # (Homebrew Python 3.14, no pytest-cov). pytest.ini's addopts demand
+        # --cov, so collection exited 4 and the catch-all arm below blocked EVERY
+        # push -- including pushes touching no Python at all. Nothing in a repo
+        # activates .venv for a git hook, so the hook has to look for it.
+        #
+        # Preference order, most explicit first: an activated virtualenv beats a
+        # discovered one, a project-local venv beats a global install, and PATH is
+        # the last resort rather than the first.
+        #
+        # This is a REAL behaviour change for repos that carry a stale .venv: they
+        # will now run the gate against it instead of a global pytest that may
+        # have been working. That is the intended direction -- a project's pinned
+        # environment is the one whose verdict means anything -- and the `using:`
+        # line below exists so the surprise is self-diagnosing rather than a
+        # mystery failure. Same rule as everywhere else in this kit: say what was
+        # examined, never just whether it passed.
+        if [ -n "${VIRTUAL_ENV:-}" ] && [ -x "${VIRTUAL_ENV}/bin/pytest" ]; then
+          PYTEST="${VIRTUAL_ENV}/bin/pytest"
+        elif [ -x .venv/bin/pytest ]; then
+          PYTEST=.venv/bin/pytest
+        elif [ -x venv/bin/pytest ]; then
+          PYTEST=venv/bin/pytest
+        elif command -v pytest >/dev/null 2>&1; then
+          PYTEST=pytest
+        else
+          PYTEST=""
+        fi
+
+        if [ -z "$PYTEST" ]; then
           echo "  (pytest not installed — skipping)"
         else
-          pytest -q --collect-only >/dev/null 2>&1
+          echo "  using: $PYTEST ($("$PYTEST" --version 2>&1 | head -1))"
+          "$PYTEST" -q --collect-only >/dev/null 2>&1
           collect_rc=$?
           case "$collect_rc" in
-            0) pytest -q --maxfail=1 ;;
+            0) "$PYTEST" -q --maxfail=1 ;;
             5) echo "  (no Python tests collected — skipping)" ;;
             *) echo "  pytest collection FAILED (exit $collect_rc)." >&2
                echo "  This is NOT 'no tests' -- see the error below." >&2
-               pytest -q --collect-only
+               "$PYTEST" -q --collect-only
                exit "$collect_rc" ;;
           esac
         fi

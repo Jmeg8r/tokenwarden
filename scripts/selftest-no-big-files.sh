@@ -94,7 +94,11 @@ export BIG_FILE_LIMIT="$LIMIT"
 
 pass=0; fail=0
 ok()  { pass=$((pass+1)); echo "  ✓ $1"; }
-bad() { fail=$((fail+1)); echo "  ✗ $1"; [ -n "${2:-}" ] && echo "$2" | sed 's/^/        /'; }
+# The trailing `[ -n ] && ...` was the function's LAST command: with no second
+# argument the test is false, the function returns 1, and errexit killed the
+# whole suite at its first one-argument bad() — a reporter that aborts the
+# report. The if-form returns 0 either way.
+bad() { fail=$((fail+1)); echo "  ✗ $1"; if [ -n "${2:-}" ]; then echo "$2" | sed 's/^/        /'; fi; }
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -125,11 +129,17 @@ run_sut() { if OUT="$("$SUT" 2>&1)"; then RC=0; else RC=$?; fi; }
 # expect <label> <BLOCK|PASS>
 expect() {
   local label="$1" want="$2"
+  # BLOCK means "the gate examined the input and refused it" — exit 1, and only 1.
+  # The old `BLOCK:*` arm accepted ANY non-zero, so a checker that could not run
+  # at all (exit 2, 127...) counted as a successful block: "the check never ran"
+  # scored as "the check worked". Same shape the checker itself refuses.
   case "$want:$RC" in
     BLOCK:0) bad "$label — expected BLOCK, got pass" "$OUT" ;;
-    BLOCK:*) ok  "$label" ;;
+    BLOCK:1) ok  "$label" ;;
+    BLOCK:*) bad "$label — checker did not RUN (rc=$RC); that is not a block" "$OUT" ;;
     PASS:0)  ok  "$label" ;;
-    PASS:*)  bad "$label — expected pass, got block (rc=$RC)" "$OUT" ;;
+    PASS:1)  bad "$label — expected pass, got block" "$OUT" ;;
+    PASS:*)  bad "$label — checker did not RUN (rc=$RC); that is not a pass" "$OUT" ;;
   esac
 }
 
@@ -195,6 +205,24 @@ new_repo c14; big "$(printf 'line1\nline2.bin')"; git add "$(printf 'line1\nline
 new_repo c15; exact e.bin;  git add e.bin;                            run_sut; expect "exactly LIMIT bytes" PASS
 new_repo c16; over1 o.bin;  git add o.bin;                            run_sut; expect "LIMIT + 1 bytes" BLOCK
 
+# Truncated --raw stream must FAIL, not report clean. A stream cut mid-metadata
+# (no trailing NUL) makes the outer `read` return non-zero, which a bare
+# `while read` treats as EOF. Simulate with a git shim that emits a partial
+# record, running the REAL checker against it.
+new_repo c18
+_shim="$WORK/c18-shim"; mkdir -p "$_shim"
+{ echo '#!/bin/sh'
+  echo 'case "$*" in *"diff --cached"*"--raw"*) printf ":000000 100644 000 111 A" ;; *) exec /usr/bin/git "$@" ;; esac'
+} > "$_shim/git"; chmod +x "$_shim/git"
+if OUT="$(PATH="$_shim:$PATH" "$SUT" 2>&1)"; then RC=0; else RC=$?; fi
+# -eq 1, not -ne 0: a deliberate rejection is exit 1. Accepting any non-zero
+# would let the checker DYING for some unrelated reason (2, 127) pass this case
+# as if it had caught the truncation — the exact non-discrimination this PR
+# fixed in expect(), which I then reproduced here in the new assertion.
+if [ "$RC" -eq 1 ] && printf '%s' "$OUT" | grep -qi 'truncated'; then
+  ok "a truncated --raw stream fails closed with exit 1, not clean"
+else bad "a truncated --raw stream was not cleanly rejected (rc=$RC, want 1)" "$OUT"; fi
+
 # N-checked reporting: a run that examined nothing must not read like a clean run.
 new_repo c17; small a.txt; git add a.txt; run_sut
 if printf '%s' "$OUT" | grep -q 'checked 1 staged blob'; then
@@ -209,7 +237,7 @@ _total=$((pass + fail))
 # EXACT, not a floor. `-lt 15` against 17 cases let two disappear silently, which is
 # the same weakness one size down: a guard that tolerates loss cannot detect loss.
 # Bumping this when you add a case is the point — it forces the change to be noticed.
-_EXPECTED_CASES=17
+_EXPECTED_CASES=18   # c18: truncated --raw stream (kit#46 review)
 if [ "$_total" -ne "$_EXPECTED_CASES" ]; then
   echo "  ✗ $_total case(s) ran, expected exactly $_EXPECTED_CASES"
   echo "      Cases were added or lost. If added, bump _EXPECTED_CASES deliberately;"
