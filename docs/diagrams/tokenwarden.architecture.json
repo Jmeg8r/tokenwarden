@@ -1,0 +1,284 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "tokenwarden — metering gateway",
+    "output": "tokenwarden.architecture.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "main-path",
+        "label": "Proxied request",
+        "focus": [
+          "agent",
+          "gateway",
+          "anthropic"
+        ],
+        "note": "Requests pass through untouched; metering never sits in the response path."
+      },
+      {
+        "id": "metering",
+        "label": "Metering and alerts",
+        "focus": [
+          "usage",
+          "pricing",
+          "db",
+          "alerts"
+        ],
+        "note": "Tokens are priced from config and written to SQLite; budgets alert from there."
+      },
+      {
+        "id": "offline",
+        "label": "Offline readers",
+        "focus": [
+          "db",
+          "cli",
+          "forecast"
+        ],
+        "note": "Both read the same spend log; neither is in the serving path."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "agent",
+      "type": "external",
+      "label": "your agent",
+      "sublabel": "ANTHROPIC_BASE_URL points here",
+      "pos": [
+        40,
+        250
+      ],
+      "size": [
+        190,
+        64
+      ]
+    },
+    {
+      "id": "gateway",
+      "type": "backend",
+      "label": "gateway.py",
+      "sublabel": "reverse proxy, fail-open; calls each",
+      "pos": [
+        280,
+        250
+      ],
+      "size": [
+        190,
+        64
+      ],
+      "tag": "127.0.0.1:8788"
+    },
+    {
+      "id": "anthropic",
+      "type": "cloud",
+      "label": "api.anthropic.com",
+      "sublabel": "upstream, untouched",
+      "pos": [
+        280,
+        110
+      ],
+      "size": [
+        190,
+        64
+      ]
+    },
+    {
+      "id": "usage",
+      "type": "backend",
+      "label": "usage.py",
+      "sublabel": "extracts token counts",
+      "pos": [
+        530,
+        110
+      ],
+      "size": [
+        190,
+        64
+      ]
+    },
+    {
+      "id": "pricing",
+      "type": "backend",
+      "label": "pricing.py",
+      "sublabel": "price table from config",
+      "pos": [
+        530,
+        250
+      ],
+      "size": [
+        190,
+        64
+      ]
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "label": "storage.py",
+      "sublabel": "SQLite spend log",
+      "pos": [
+        530,
+        400
+      ],
+      "size": [
+        190,
+        64
+      ]
+    },
+    {
+      "id": "alerts",
+      "type": "security",
+      "label": "alerts.py",
+      "sublabel": "daily budget thresholds",
+      "pos": [
+        780,
+        400
+      ],
+      "size": [
+        190,
+        64
+      ]
+    },
+    {
+      "id": "notifiers",
+      "type": "external",
+      "label": "notifiers.py",
+      "sublabel": "delivers the alert",
+      "pos": [
+        1030,
+        400
+      ],
+      "size": [
+        190,
+        64
+      ]
+    },
+    {
+      "id": "cli",
+      "type": "backend",
+      "label": "cli.py status",
+      "sublabel": "spend by agent",
+      "pos": [
+        780,
+        250
+      ],
+      "size": [
+        190,
+        64
+      ]
+    },
+    {
+      "id": "forecast",
+      "type": "backend",
+      "label": "forecast.py",
+      "sublabel": "optional extra; lazy torch",
+      "pos": [
+        780,
+        110
+      ],
+      "size": [
+        190,
+        64
+      ],
+      "tag": "never in serving path"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "tokenwarden, local",
+      "wraps": [
+        "gateway",
+        "usage",
+        "pricing",
+        "db",
+        "alerts",
+        "cli",
+        "forecast"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "agent-gateway",
+      "from": "agent",
+      "to": "gateway",
+      "variant": "emphasis"
+    },
+    {
+      "id": "gateway-anthropic",
+      "from": "gateway",
+      "to": "anthropic",
+      "label": "forwards",
+      "variant": "emphasis"
+    },
+    {
+      "id": "gateway-usage",
+      "from": "gateway",
+      "to": "usage"
+    },
+    {
+      "id": "gateway-pricing",
+      "from": "gateway",
+      "to": "pricing"
+    },
+    {
+      "id": "gateway-db",
+      "from": "gateway",
+      "to": "db",
+      "variant": "emphasis"
+    },
+    {
+      "id": "db-alerts",
+      "from": "db",
+      "to": "alerts"
+    },
+    {
+      "id": "alerts-notifiers",
+      "from": "alerts",
+      "to": "notifiers"
+    },
+    {
+      "id": "db-cli",
+      "from": "db",
+      "to": "cli",
+      "variant": "dashed"
+    },
+    {
+      "id": "db-forecast",
+      "from": "db",
+      "to": "forecast",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Proxy",
+      "items": [
+        "Transparent reverse proxy on 127.0.0.1:8788",
+        "Fail-open: metering errors can never break the response path",
+        "The API key is forwarded, never persisted; prompt bodies are not logged"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Metering",
+      "items": [
+        "gateway.py is the hub: it calls usage.py, pricing.py and storage.py directly",
+        "usage.py and pricing.py never call each other or storage — no module chain",
+        "Per-agent attribution via a configurable header (agent_header, default x-watchdog-agent)",
+        "Cost is ESTIMATED from a config price table until Cost-API reconciliation"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Kept out of the hot path",
+      "items": [
+        "forecast.py is an offline reader; gateway.py never imports it",
+        "timesfm/torch import lazily inside the forecaster, so the gateway never pulls torch",
+        "Installed only via the optional 'forecast' extra"
+      ]
+    }
+  ]
+}

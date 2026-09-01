@@ -29,7 +29,9 @@ flowchart LR
   and streams the response straight back. It is **fail-open**: if metering ever
   errors, your agent still gets its response.
 - **Per-agent attribution.** Each agent identifies itself with an
-  `X-Watchdog-Agent: <name>` header. That label is whatever you choose.
+  `X-Watchdog-Agent: <name>` header. That label is whatever you choose, and so is the header
+  name — `agent_header` in `config.toml` overrides it (default `x-watchdog-agent`; HTTP header
+  names are case-insensitive).
 - **Estimated cost** from a configurable price table (defaults ship for current
   models). Stored dollars are estimates until Cost-API reconciliation (phase 2).
 - **No secrets stored.** Your API key is only forwarded, never persisted. Prompt
@@ -138,3 +140,14 @@ phase-2 Admin-API collector. See [SPEC.md](SPEC.md).
 ## License
 
 MIT
+
+<!-- archify:begin -->
+### System map
+
+![System map](docs/diagrams/tokenwarden.architecture.svg)
+
+Interactive: [`docs/diagrams/tokenwarden.architecture.html`](docs/diagrams/tokenwarden.architecture.html)
+— search nodes, trace routes, compare roles. Source of truth is the typed IR
+[`tokenwarden.architecture.json`](docs/diagrams/tokenwarden.architecture.json); edit that, never
+the HTML.
+<!-- archify:end -->
