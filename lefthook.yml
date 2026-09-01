@@ -266,11 +266,23 @@ pre-push:
 
     tests:
       tags: tests
+      # Prefer the repo's OWN virtualenv. A bare `pytest` resolves to whatever is on PATH,
+      # which on this machine is a pyenv/system interpreter that does not have this project
+      # installed — so every push failed with `ModuleNotFoundError: No module named
+      # 'tokenwarden'` while `.venv/bin/pytest` passed 62/1 on the identical tree. A gate that
+      # fails for a reason unrelated to the change is one you learn to bypass, which costs more
+      # than the defect it was meant to catch.
+      #
+      # Falls back to a bare `pytest` when there is no .venv, so the block stays portable to
+      # repos that manage their environment differently. It does NOT swallow a real failure:
+      # the exit code of the chosen interpreter is still what decides the gate.
       run: |
+        PYTEST=pytest
+        [ -x .venv/bin/pytest ] && PYTEST=.venv/bin/pytest
         if [ -f pyproject.toml ] && grep -q pytest pyproject.toml 2>/dev/null; then
-          pytest -q --maxfail=1
+          "$PYTEST" -q --maxfail=1
         elif [ -d tests ]; then
-          pytest -q --maxfail=1
+          "$PYTEST" -q --maxfail=1
         else
           echo "  (no tests configured — skipping)"
         fi
